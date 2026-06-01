@@ -1,0 +1,59 @@
+#示例配置信息
+
+#其他配置文件,可以使用绝对路径
+#或者相对于 anylink 二进制文件的路径
+
+#数据文件
+db_type = "sqlite3"
+db_source = "./conf/anylink.db"
+#证书文件
+cert_file = "./conf/vpn_cert.pem"
+cert_key = "./conf/vpn_cert.key"
+files_path = "./conf/files"
+
+#日志目录,默认为空写入标准输出
+#log_path = "./log"
+log_level = "debug"
+
+#系统名称
+issuer = "XX公司VPN"
+#后台管理用户
+admin_user = "admin"
+#pass 123456
+admin_pass = "$2a$10$UQ7C.EoPifDeJh6d8.31TeSPQU7hM/NOM2nixmBucJpAuXDQNqNke"
+# 留空表示不开启 otp, 开启otp后密码为  pass + 6位otp
+# 生成 ./anylink tool -o
+admin_otp = ""
+jwt_secret = "abcdef.0123456789.abcdef"
+
+#TCP服务监听地址(任意端口)
+server_addr = ":443"
+#开启 DTLS
+server_dtls = false
+#UDP监听地址(任意端口)
+server_dtls_addr = ":443"
+#后台服务监听地址
+admin_addr = ":8800"
+
+# 最大并发连接数（需 ≤ 地址池可分配数量；可按峰值调整）
+max_client = 8000
+# 单个用户同时在线终端数
+max_user_client = 5
+
+# 虚拟网络类型 [tun macvtap tap]
+link_mode = "tun"
+
+# ---------- VPN 虚拟地址池（与现有交换机网段无重叠，落在 VPC 172.27.0.0/16 内）----------
+# 阿里云 ECS 请用 ip route 或「网络信息」里能访问 VPC 的网卡名，常见为 eth0
+ipv4_master = "eth0"
+# /18 约 1.6 万主机位，适合上千并发；若需更小池可改为 172.27.144.0/19 并相应缩小 ipv4_end
+ipv4_cidr = "172.27.144.0/18"
+ipv4_gateway = "172.27.144.1"
+ipv4_start = "172.27.144.2"
+ipv4_end = "172.27.207.254"
+
+# 云上访问 VPC 内其它网段一般保持 true（SNAT）；若改桥接/代理 ARP 需另配
+iptables_nat = true
+
+#客户端显示详细错误信息(线上环境慎开启)
+display_error = true

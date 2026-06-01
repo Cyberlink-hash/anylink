@@ -1,0 +1,26 @@
+[Unit]
+Description=AnyLink VPN Server
+Documentation=https://github.com/bjdgyc/anylink
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/usr/local/anylink-deploy
+ExecStart=/usr/local/anylink-deploy/anylink --conf=/usr/local/anylink-deploy/conf/server.toml
+
+Restart=on-failure
+RestartSec=5s
+
+# 并发 VPN 较多时可适当加大
+LimitNOFILE=1048576
+
+# 日志走 journal：journalctl -u anylink -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=anylink
+
+[Install]
+WantedBy=multi-user.target
