@@ -151,12 +151,18 @@
 
         <el-table-column
             label="操作"
-            width="150">
+            width="220">
           <template slot-scope="scope">
             <el-button
                 size="mini"
                 type="primary"
                 @click="handleEdit(scope.row)">编辑
+            </el-button>
+
+            <el-button
+                size="mini"
+                type="success"
+                @click="handleCopy(scope.row)">复制
             </el-button>
 
             <el-popconfirm
@@ -683,6 +689,43 @@ export default {
         this.$message.error('哦，请求出错');
         console.log(error);
       });
+    },
+    handleCopy(row) {
+      !this.$refs['ruleForm'] || this.$refs['ruleForm'].resetFields();
+      axios.all([
+        axios.get('/group/detail', {
+          params: {
+            id: row.id,
+          }
+        }),
+        axios.get('/group/names_ids')
+      ]).then(axios.spread((detailResp, namesResp) => {
+        const data = JSON.parse(JSON.stringify(detailResp.data.data));
+        const names = namesResp.data.data.datas.map(item => item.name);
+        data.id = 0;
+        data.name = this.getCopyGroupName(data.name, names);
+        delete data.created_at;
+        delete data.updated_at;
+        data.bandwidth_format = this.convertBandwidth(data.bandwidth, 'BYTE', 'Mbps').toString();
+        this.ruleForm = data;
+        this.setAuthData(data);
+        this.activeTab = "general";
+        this.user_edit_dialog = true;
+      })).catch(error => {
+        this.$message.error('哦，请求出错');
+        console.log(error);
+      });
+    },
+    getCopyGroupName(name, names) {
+      const baseName = `${name}-copy`;
+      if (!names.includes(baseName)) {
+        return baseName;
+      }
+      let index = 2;
+      while (names.includes(`${baseName}-${index}`)) {
+        index++;
+      }
+      return `${baseName}-${index}`;
     },
     pageChange(p) {
       this.getData(p)
