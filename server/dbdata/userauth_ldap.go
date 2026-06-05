@@ -67,40 +67,109 @@ func (auth AuthLdap) checkUser(name, pwd string, g *Group, ext map[string]interf
 	if name == "" || pl < 1 {
 		return fmt.Errorf("%s %s", name, "密码错误")
 	}
+	auth, err := auth.getLDAPAuth(g, name)
+	if err != nil {
+		return err
+	}
+	l, err := auth.bindLDAPAdmin(name)
+	if err != nil {
+		return err
+	}
+	defer l.Close()
+	sr, err := auth.searchLDAPUserForLogin(l, name)
+	if err != nil {
+		return err
+	}
+	err = parseEntries(sr)
+	if err != nil {
+		return fmt.Errorf("LDAP %s 用户 %s", name, err.Error())
+	}
+	userDN := sr.Entries[0].DN
+	err = l.Bind(userDN, pwd)
+	if err != nil {
+		return fmt.Errorf("%s LDAP 登入失败，请检查登入的账号或密码 %s", name, err.Error())
+	}
+	return nil
+}
+
+func (auth AuthLdap) checkUserActiveInGroup(name string, g *Group) (bool, error) {
+	if name == "" {
+		return false, nil
+	}
+	auth, err := auth.getLDAPAuth(g, name)
+	if err != nil {
+		return false, err
+	}
+	l, err := auth.bindLDAPAdmin(name)
+	if err != nil {
+		return false, err
+	}
+	defer l.Close()
+	sr, ok, err := auth.searchLDAPUserMembership(l, name)
+	if err != nil || !ok {
+		return ok, err
+	}
+	if err = parseEntries(sr); err != nil {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (auth AuthLdap) getLDAPAuth(g *Group, name string) (AuthLdap, error) {
 	authType := g.Auth["type"].(string)
 	if _, ok := g.Auth[authType]; !ok {
-		return fmt.Errorf("%s %s", name, "LDAP的ldap值不存在")
+		return auth, fmt.Errorf("%s %s", name, "LDAP的ldap值不存在")
 	}
 	bodyBytes, err := json.Marshal(g.Auth[authType])
 	if err != nil {
-		return fmt.Errorf("%s %s", name, "LDAP Marshal出现错误")
+		return auth, fmt.Errorf("%s %s", name, "LDAP Marshal出现错误")
 	}
 	err = json.Unmarshal(bodyBytes, &auth)
 	if err != nil {
-		return fmt.Errorf("%s %s", name, "LDAP Unmarshal出现错误")
+		return auth, fmt.Errorf("%s %s", name, "LDAP Unmarshal出现错误")
 	}
+	return auth, nil
+}
+
+func (auth AuthLdap) bindLDAPAdmin(name string) (*ldap.Conn, error) {
 	// 检测服务器和端口的可用性
 	con, err := net.DialTimeout("tcp", auth.Addr, 3*time.Second)
 	if err != nil {
-		return fmt.Errorf("%s %s", name, "LDAP服务器连接异常, 请检测服务器和端口")
+		return nil, fmt.Errorf("%s %s", name, "LDAP服务器连接异常, 请检测服务器和端口")
 	}
 	defer con.Close()
 	// 连接LDAP
 	l, err := ldap.Dial("tcp", auth.Addr)
 	if err != nil {
-		return fmt.Errorf("LDAP连接失败 %s %s", auth.Addr, err.Error())
+		return nil, fmt.Errorf("LDAP连接失败 %s %s", auth.Addr, err.Error())
 	}
-	defer l.Close()
 	if auth.Tls {
 		err = l.StartTLS(&tls.Config{InsecureSkipVerify: true})
 		if err != nil {
-			return fmt.Errorf("%s LDAP TLS连接失败 %s", name, err.Error())
+			l.Close()
+			return nil, fmt.Errorf("%s LDAP TLS连接失败 %s", name, err.Error())
 		}
 	}
 	err = l.Bind(auth.BindName, auth.BindPwd)
 	if err != nil {
-		return fmt.Errorf("%s LDAP 管理员 DN或密码填写有误 %s", name, err.Error())
+		l.Close()
+		return nil, fmt.Errorf("%s LDAP 管理员 DN或密码填写有误 %s", name, err.Error())
 	}
+	return l, nil
+}
+
+func (auth AuthLdap) searchLDAPUserForLogin(l *ldap.Conn, name string) (*ldap.SearchResult, error) {
+	sr, ok, err := auth.searchLDAPUserMembership(l, name)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("LDAP 找不到 %s 用户或用户不属于受限用户组, 请检查用户或LDAP配置参数", name)
+	}
+	return sr, nil
+}
+
+func (auth AuthLdap) searchLDAPUserMembership(l *ldap.Conn, name string) (*ldap.SearchResult, bool, error) {
 	if auth.ObjectClass == "" {
 		auth.ObjectClass = "person"
 	}
@@ -121,39 +190,31 @@ func (auth AuthLdap) checkUser(name, pwd string, g *Group, ext map[string]interf
 	sr, err := l.Search(searchRequest)
 	if err != nil {
 		if auth.MemberOf == "" || !isLDAPMemberOfUnsupported(err) {
-			return fmt.Errorf("%s LDAP 查询失败 %s %s %s", name, auth.BaseDn, filterAttr, err.Error())
+			return nil, false, fmt.Errorf("%s LDAP 查询失败 %s %s %s", name, auth.BaseDn, filterAttr, err.Error())
 		}
 		fallbackGroupMembership = true
-		sr, err = auth.searchLDAPUser(l, name, userFilterAttr)
-		if err != nil {
-			return err
+		var ok bool
+		sr, ok, err = auth.searchLDAPUser(l, name, userFilterAttr)
+		if err != nil || !ok {
+			return nil, ok, err
 		}
 	} else if len(sr.Entries) != 1 {
 		if len(sr.Entries) == 0 {
-			return fmt.Errorf("LDAP 找不到 %s 用户, 请检查用户或LDAP配置参数", name)
+			return nil, false, nil
 		}
-		return fmt.Errorf("LDAP发现 %s 用户，存在多个账号", name)
-	}
-
-	err = parseEntries(sr)
-	if err != nil {
-		return fmt.Errorf("LDAP %s 用户 %s", name, err.Error())
+		return nil, false, fmt.Errorf("LDAP发现 %s 用户，存在多个账号", name)
 	}
 	userDN := sr.Entries[0].DN
 	if fallbackGroupMembership {
-		err = auth.checkLDAPGroupMembership(l, name, userDN)
-		if err != nil {
-			return err
+		ok, err := auth.checkLDAPGroupMembership(l, name, userDN)
+		if err != nil || !ok {
+			return nil, ok, err
 		}
 	}
-	err = l.Bind(userDN, pwd)
-	if err != nil {
-		return fmt.Errorf("%s LDAP 登入失败，请检查登入的账号或密码 %s", name, err.Error())
-	}
-	return nil
+	return sr, true, nil
 }
 
-func (auth AuthLdap) searchLDAPUser(l *ldap.Conn, name, filterAttr string) (*ldap.SearchResult, error) {
+func (auth AuthLdap) searchLDAPUser(l *ldap.Conn, name, filterAttr string) (*ldap.SearchResult, bool, error) {
 	searchRequest := ldap.NewSearchRequest(
 		auth.BaseDn,
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 3, false,
@@ -163,18 +224,18 @@ func (auth AuthLdap) searchLDAPUser(l *ldap.Conn, name, filterAttr string) (*lda
 	)
 	sr, err := l.Search(searchRequest)
 	if err != nil {
-		return nil, fmt.Errorf("%s LDAP 查询失败 %s %s %s", name, auth.BaseDn, filterAttr, err.Error())
+		return nil, false, fmt.Errorf("%s LDAP 查询失败 %s %s %s", name, auth.BaseDn, filterAttr, err.Error())
 	}
 	if len(sr.Entries) != 1 {
 		if len(sr.Entries) == 0 {
-			return nil, fmt.Errorf("LDAP 找不到 %s 用户, 请检查用户或LDAP配置参数", name)
+			return nil, false, nil
 		}
-		return nil, fmt.Errorf("LDAP发现 %s 用户，存在多个账号", name)
+		return nil, false, fmt.Errorf("LDAP发现 %s 用户，存在多个账号", name)
 	}
-	return sr, nil
+	return sr, true, nil
 }
 
-func (auth AuthLdap) checkLDAPGroupMembership(l *ldap.Conn, name, userDN string) error {
+func (auth AuthLdap) checkLDAPGroupMembership(l *ldap.Conn, name, userDN string) (bool, error) {
 	searchRequest := ldap.NewSearchRequest(
 		auth.MemberOf,
 		ldap.ScopeBaseObject, ldap.NeverDerefAliases, 0, 3, false,
@@ -184,19 +245,19 @@ func (auth AuthLdap) checkLDAPGroupMembership(l *ldap.Conn, name, userDN string)
 	)
 	sr, err := l.Search(searchRequest)
 	if err != nil {
-		return fmt.Errorf("%s LDAP 查询受限用户组失败 %s %s", name, auth.MemberOf, err.Error())
+		return false, fmt.Errorf("%s LDAP 查询受限用户组失败 %s %s", name, auth.MemberOf, err.Error())
 	}
 	if len(sr.Entries) != 1 {
-		return fmt.Errorf("%s LDAP 受限用户组不存在或不唯一 %s", name, auth.MemberOf)
+		return false, fmt.Errorf("%s LDAP 受限用户组不存在或不唯一 %s", name, auth.MemberOf)
 	}
 	entry := sr.Entries[0]
 	if hasLDAPObjectClass(entry, "groupOfUniqueNames") && hasLDAPAttributeValue(entry, "uniqueMember", userDN) {
-		return nil
+		return true, nil
 	}
 	if hasLDAPObjectClass(entry, "groupOfNames") && hasLDAPAttributeValue(entry, "member", userDN) {
-		return nil
+		return true, nil
 	}
-	return fmt.Errorf("%s LDAP 用户不属于受限用户组 %s", name, auth.MemberOf)
+	return false, nil
 }
 
 func isLDAPMemberOfUnsupported(err error) bool {

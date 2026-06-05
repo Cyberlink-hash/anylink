@@ -3,6 +3,7 @@ package dbdata
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,6 +32,9 @@ func SetUser(v *User) error {
 	var err error
 	if v.Username == "" || len(v.Groups) == 0 {
 		return errors.New("用户名或组错误")
+	}
+	if v.AuthType == "" {
+		v.AuthType = "local"
 	}
 
 	planPass := v.PinCode
@@ -92,7 +96,105 @@ func CheckUser(name, pwd, group string, ext map[string]interface{}) error {
 		return fmt.Errorf("%s %s", "未知的认证方式: ", authType)
 	}
 	auth := makeInstance(authType).(IUserAuth)
-	return auth.checkUser(name, pwd, groupData, ext)
+	err = auth.checkUser(name, pwd, groupData, ext)
+	if err != nil {
+		return err
+	}
+	return SyncExternalUser(name, group, authType)
+}
+
+func SyncExternalUser(name, group, authType string) error {
+	if name == "" || group == "" || authType == "" || authType == "local" {
+		return nil
+	}
+	v := &User{}
+	err := One("Username", name, v)
+	if err != nil {
+		if !CheckErrNotFound(err) {
+			return err
+		}
+		return Add(&User{
+			Username:   name,
+			AuthType:   authType,
+			Groups:     []string{group},
+			Status:     1,
+			DisableOtp: true,
+		})
+	}
+	if !utils.InArrStr(v.Groups, group) {
+		v.Groups = append(v.Groups, group)
+	}
+	v.AuthType = authType
+	v.UpdatedAt = time.Now()
+	return Set(v)
+}
+
+func SyncLDAPUsersStatus() (int64, error) {
+	var users []User
+	err := FindWhere(&users, 0, 0, "auth_type=? AND status=?", "ldap", 1)
+	if err != nil {
+		return 0, err
+	}
+	var (
+		affected int64
+		errMsgs  []string
+	)
+	for _, user := range users {
+		active, checked, err := checkLDAPUserActiveInAnyGroup(user.Username, user.Groups)
+		if err != nil {
+			errMsgs = append(errMsgs, err.Error())
+			continue
+		}
+		if !checked || active {
+			continue
+		}
+		n, err := xdb.ID(user.Id).Cols("status", "updated_at").Update(&User{
+			Status:    0,
+			UpdatedAt: time.Now(),
+		})
+		if err != nil {
+			errMsgs = append(errMsgs, fmt.Sprintf("%s LDAP同步停用失败: %s", user.Username, err.Error()))
+			continue
+		}
+		affected += n
+	}
+	if len(errMsgs) > 0 {
+		return affected, errors.New(strings.Join(errMsgs, "; "))
+	}
+	return affected, nil
+}
+
+func checkLDAPUserActiveInAnyGroup(username string, groups []string) (bool, bool, error) {
+	var (
+		checked bool
+		errMsgs []string
+	)
+	for _, groupName := range groups {
+		groupData := &Group{}
+		err := One("Name", groupName, groupData)
+		if err != nil || groupData.Status != 1 {
+			continue
+		}
+		if len(groupData.Auth) == 0 || groupData.Auth["type"] != "ldap" {
+			continue
+		}
+		checked = true
+		ok, err := (AuthLdap{}).checkUserActiveInGroup(username, groupData)
+		if err != nil {
+			errMsgs = append(errMsgs, fmt.Sprintf("%s/%s: %s", username, groupName, err.Error()))
+			continue
+		}
+		if ok {
+			return true, true, nil
+		}
+	}
+	if len(errMsgs) > 0 && !checked {
+		return false, checked, errors.New(strings.Join(errMsgs, "; "))
+	}
+	if len(errMsgs) > 0 {
+		return false, checked, errors.New(strings.Join(errMsgs, "; "))
+	}
+	return false, checked, nil
 }
 
 // 验证本地用户登录信息

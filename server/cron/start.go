@@ -15,5 +15,6 @@ func Start() {
 	s.Cron("0 * * * *").Do(ClearUserActLog)
 	s.Every(1).Day().At("00:00").Do(sessdata.CloseUserLimittimeSession)
 	s.Every(1).Day().At("00:00").Do(dbdata.ReNewCert)
+	s.Every(1).Day().At("00:10").Do(SyncLDAPUsersStatus)
 	s.StartAsync()
 }

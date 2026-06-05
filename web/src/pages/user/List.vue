@@ -42,6 +42,12 @@
         <el-table-column prop="username" label="用户名" width="150">
         </el-table-column>
 
+        <el-table-column prop="auth_type" label="类型" width="90">
+          <template slot-scope="scope">
+            <el-tag size="small" type="warning">{{ scope.row.auth_type || 'local' }}</el-tag>
+          </template>
+        </el-table-column>
+
         <el-table-column prop="nickname" label="姓名" width="100">
         </el-table-column>
 
