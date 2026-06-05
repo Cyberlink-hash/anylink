@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-ldap/ldap"
@@ -105,6 +106,7 @@ func (auth AuthLdap) checkUser(name, pwd string, g *Group, ext map[string]interf
 	}
 	filterAttr := "(objectClass=" + auth.ObjectClass + ")"
 	filterAttr += "(" + auth.SearchAttr + "=" + name + ")"
+	userFilterAttr := filterAttr
 	if auth.MemberOf != "" {
 		filterAttr += "(memberOf:=" + auth.MemberOf + ")"
 	}
@@ -115,26 +117,123 @@ func (auth AuthLdap) checkUser(name, pwd string, g *Group, ext map[string]interf
 		[]string{},
 		nil,
 	)
+	fallbackGroupMembership := false
 	sr, err := l.Search(searchRequest)
 	if err != nil {
-		return fmt.Errorf("%s LDAP 查询失败 %s %s %s", name, auth.BaseDn, filterAttr, err.Error())
-	}
-	if len(sr.Entries) != 1 {
+		if auth.MemberOf == "" || !isLDAPMemberOfUnsupported(err) {
+			return fmt.Errorf("%s LDAP 查询失败 %s %s %s", name, auth.BaseDn, filterAttr, err.Error())
+		}
+		fallbackGroupMembership = true
+		sr, err = auth.searchLDAPUser(l, name, userFilterAttr)
+		if err != nil {
+			return err
+		}
+	} else if len(sr.Entries) != 1 {
 		if len(sr.Entries) == 0 {
 			return fmt.Errorf("LDAP 找不到 %s 用户, 请检查用户或LDAP配置参数", name)
 		}
 		return fmt.Errorf("LDAP发现 %s 用户，存在多个账号", name)
 	}
+
 	err = parseEntries(sr)
 	if err != nil {
 		return fmt.Errorf("LDAP %s 用户 %s", name, err.Error())
 	}
 	userDN := sr.Entries[0].DN
+	if fallbackGroupMembership {
+		err = auth.checkLDAPGroupMembership(l, name, userDN)
+		if err != nil {
+			return err
+		}
+	}
 	err = l.Bind(userDN, pwd)
 	if err != nil {
 		return fmt.Errorf("%s LDAP 登入失败，请检查登入的账号或密码 %s", name, err.Error())
 	}
 	return nil
+}
+
+func (auth AuthLdap) searchLDAPUser(l *ldap.Conn, name, filterAttr string) (*ldap.SearchResult, error) {
+	searchRequest := ldap.NewSearchRequest(
+		auth.BaseDn,
+		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 3, false,
+		fmt.Sprintf("(&%s)", filterAttr),
+		[]string{},
+		nil,
+	)
+	sr, err := l.Search(searchRequest)
+	if err != nil {
+		return nil, fmt.Errorf("%s LDAP 查询失败 %s %s %s", name, auth.BaseDn, filterAttr, err.Error())
+	}
+	if len(sr.Entries) != 1 {
+		if len(sr.Entries) == 0 {
+			return nil, fmt.Errorf("LDAP 找不到 %s 用户, 请检查用户或LDAP配置参数", name)
+		}
+		return nil, fmt.Errorf("LDAP发现 %s 用户，存在多个账号", name)
+	}
+	return sr, nil
+}
+
+func (auth AuthLdap) checkLDAPGroupMembership(l *ldap.Conn, name, userDN string) error {
+	searchRequest := ldap.NewSearchRequest(
+		auth.MemberOf,
+		ldap.ScopeBaseObject, ldap.NeverDerefAliases, 0, 3, false,
+		"(objectClass=*)",
+		[]string{"objectClass", "uniqueMember", "member"},
+		nil,
+	)
+	sr, err := l.Search(searchRequest)
+	if err != nil {
+		return fmt.Errorf("%s LDAP 查询受限用户组失败 %s %s", name, auth.MemberOf, err.Error())
+	}
+	if len(sr.Entries) != 1 {
+		return fmt.Errorf("%s LDAP 受限用户组不存在或不唯一 %s", name, auth.MemberOf)
+	}
+	entry := sr.Entries[0]
+	if hasLDAPObjectClass(entry, "groupOfUniqueNames") && hasLDAPAttributeValue(entry, "uniqueMember", userDN) {
+		return nil
+	}
+	if hasLDAPObjectClass(entry, "groupOfNames") && hasLDAPAttributeValue(entry, "member", userDN) {
+		return nil
+	}
+	return fmt.Errorf("%s LDAP 用户不属于受限用户组 %s", name, auth.MemberOf)
+}
+
+func isLDAPMemberOfUnsupported(err error) bool {
+	if ldapErr, ok := err.(*ldap.Error); ok {
+		switch ldapErr.ResultCode {
+		case ldap.LDAPResultNoSuchAttribute,
+			ldap.LDAPResultUndefinedAttributeType,
+			ldap.LDAPResultInappropriateMatching,
+			ldap.LDAPResultUnwillingToPerform,
+			ldap.LDAPResultFilterError:
+			return true
+		}
+	}
+	errMsg := strings.ToLower(err.Error())
+	return strings.Contains(errMsg, "memberof") &&
+		(strings.Contains(errMsg, "unsupported") ||
+			strings.Contains(errMsg, "no such attribute") ||
+			strings.Contains(errMsg, "undefined attribute") ||
+			strings.Contains(errMsg, "undefined attribute type"))
+}
+
+func hasLDAPObjectClass(entry *ldap.Entry, objectClass string) bool {
+	for _, v := range entry.GetAttributeValues("objectClass") {
+		if strings.EqualFold(v, objectClass) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasLDAPAttributeValue(entry *ldap.Entry, attrName, want string) bool {
+	for _, v := range entry.GetAttributeValues(attrName) {
+		if strings.EqualFold(v, want) {
+			return true
+		}
+	}
+	return false
 }
 
 func parseEntries(sr *ldap.SearchResult) error {
