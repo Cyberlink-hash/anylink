@@ -350,16 +350,7 @@
           <el-tab-pane label="路由设置" name="route">
             <el-form-item label="包含路由" prop="route_include">
               <el-row class="msg-info">
-                <el-col :span="10">输入CIDR格式如: 192.168.1.0/24</el-col>
-                <el-col :span="14" class="route-actions">
-                  <el-button size="mini" type="text" @click.prevent="selectRouteItems('route_include', true)">全选</el-button>
-                  <el-button size="mini" type="text" @click.prevent="selectRouteItems('route_include', false)">取消</el-button>
-                  <el-button size="mini" type="text" @click.prevent="exportRoutes('route_include')">导出选中</el-button>
-                  <el-button size="mini" type="text" @click.prevent="openRouteImportDialog('route_include')">导入</el-button>
-                </el-col>
-              </el-row>
-              <el-row class="msg-info">
-                <el-col :span="18">当前选中 {{ routeSelection.route_include.length }} / {{ ruleForm.route_include.length }}</el-col>
+                <el-col :span="18">输入CIDR格式如: 192.168.1.0/24</el-col>
                 <el-col :span="2">
                   <el-button size="mini" type="success" icon="el-icon-plus" circle
                              @click.prevent="addDomain(ruleForm.route_include)"></el-button>
@@ -372,10 +363,7 @@
               <templete v-if="activeTab == 'route'">
                 <el-row v-for="(item,index) in ruleForm.route_include"
                         :key="index" style="margin-bottom: 5px" :gutter="10">
-                  <el-col :span="1" class="route-select-col">
-                    <el-checkbox v-model="routeSelection.route_include" :label="index">&nbsp;</el-checkbox>
-                  </el-col>
-                  <el-col :span="9">
+                  <el-col :span="10">
                     <el-input v-model="item.val"></el-input>
                   </el-col>
                   <el-col :span="12">
@@ -391,16 +379,7 @@
 
             <el-form-item label="排除路由" prop="route_exclude">
               <el-row class="msg-info">
-                <el-col :span="10">输入CIDR格式如: 192.168.2.0/24</el-col>
-                <el-col :span="14" class="route-actions">
-                  <el-button size="mini" type="text" @click.prevent="selectRouteItems('route_exclude', true)">全选</el-button>
-                  <el-button size="mini" type="text" @click.prevent="selectRouteItems('route_exclude', false)">取消</el-button>
-                  <el-button size="mini" type="text" @click.prevent="exportRoutes('route_exclude')">导出选中</el-button>
-                  <el-button size="mini" type="text" @click.prevent="openRouteImportDialog('route_exclude')">导入</el-button>
-                </el-col>
-              </el-row>
-              <el-row class="msg-info">
-                <el-col :span="18">当前选中 {{ routeSelection.route_exclude.length }} / {{ ruleForm.route_exclude.length }}</el-col>
+                <el-col :span="18">输入CIDR格式如: 192.168.2.0/24</el-col>
                 <el-col :span="2">
                   <el-button size="mini" type="success" icon="el-icon-plus" circle
                              @click.prevent="addDomain(ruleForm.route_exclude)"></el-button>
@@ -413,10 +392,7 @@
               <templete v-if="activeTab == 'route'">
                 <el-row v-for="(item,index) in ruleForm.route_exclude"
                         :key="index" style="margin-bottom: 5px" :gutter="10">
-                  <el-col :span="1" class="route-select-col">
-                    <el-checkbox v-model="routeSelection.route_exclude" :label="index">&nbsp;</el-checkbox>
-                  </el-col>
-                  <el-col :span="9">
+                  <el-col :span="10">
                     <el-input v-model="item.val"></el-input>
                   </el-col>
                   <el-col :span="12">
@@ -527,32 +503,6 @@
         </el-form-item>
       </el-form>
     </el-dialog>
-    <!--路由导入弹窗-->
-    <el-dialog
-        :close-on-click-modal="false"
-        title="导入路由"
-        :visible.sync="routeImportDialog"
-        width="650px"
-        custom-class="valgin-dialog"
-        center>
-      <el-form ref="routeImportForm" label-width="80px">
-        <el-form-item label="导入方式">
-          <el-radio-group v-model="routeImportForm.mode">
-            <el-radio label="append" border>追加</el-radio>
-            <el-radio label="replace" border>覆盖</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="路由表">
-          <el-input type="textarea" :rows="10" v-model="routeImportForm.ip_list"
-                    placeholder="每行一条路由，例：192.168.1.0/24,备注 或 192.168.1.0/24"></el-input>
-          <div class="msg-info">导入时按CIDR去重，已有条目不会覆盖备注。AnyConnect客户端最多支持{{ maxRouteRows }}条路由。</div>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="importRoutes()" :loading="routeImportLoading">导入</el-button>
-          <el-button @click="routeImportDialog = false">取 消</el-button>
-        </el-form-item>
-      </el-form>
-    </el-dialog>
     <!--编辑模式弹窗-->
     <el-dialog
         :close-on-click-modal="false"
@@ -602,10 +552,6 @@ export default {
       count: 10,
       activeTab: "general",
       readMore: {},
-      routeSelection: {
-        route_include: [],
-        route_exclude: [],
-      },
       readMinRows: 5,
       maxRouteRows: 2500,
       defAuth: {
@@ -636,7 +582,6 @@ export default {
       },
       authLoginDialog: false,
       ipListDialog: false,
-      routeImportDialog: false,
       authLoginLoading: false,
       authLoginForm: {
         name: "",
@@ -646,13 +591,7 @@ export default {
         ip_list: "",
         type: "",
       },
-      routeImportForm: {
-        ip_list: "",
-        type: "",
-        mode: "append",
-      },
       ipEditLoading: false,
-      routeImportLoading: false,
       authLoginRules: {
         name: [
           {required: true, message: '请输入账号', trigger: 'blur'},
@@ -732,7 +671,6 @@ export default {
     },
     handleEdit(row) {
       !this.$refs['ruleForm'] || this.$refs['ruleForm'].resetFields();
-      this.clearRouteSelection();
       console.log(row)
       this.user_edit_dialog = true
       if (!row) {
@@ -772,7 +710,6 @@ export default {
         this.ruleForm = data;
         this.setAuthData(data);
         this.activeTab = "general";
-        this.clearRouteSelection();
         this.user_edit_dialog = true;
       })).catch(error => {
         this.$message.error('哦，请求出错');
@@ -814,7 +751,6 @@ export default {
       if (index >= 0 && index < arr.length) {
         arr.splice(index, 1)
       }
-      this.shiftRouteSelectionAfterRemove(arr, index);
       // let index = arr.indexOf(item);
       // if (index !== -1 && arr.length > 1) {
       //   arr.splice(index, 1)
@@ -899,52 +835,9 @@ export default {
       if (this.ipEditForm.ip_list.trim() !== "") {
         ipList = this.ipEditForm.ip_list.trim().split("\n");
       }
-      const parseResult = this.parseRouteLines(ipList, this.ipEditForm.type);
-      if (!parseResult.valid) {
-        this.$message.error(parseResult.message);
-        this.ipEditLoading = false;
-        return;
-      }
-      this.ruleForm[this.ipEditForm.type] = parseResult.routes;
-      this.routeSelection[this.ipEditForm.type] = [];
-      this.ipEditLoading = false;
-      this.ipListDialog = false;
-    },
-    openRouteImportDialog(type) {
-      this.routeImportDialog = true;
-      this.routeImportForm.type = type;
-      this.routeImportForm.mode = "append";
-      this.routeImportForm.ip_list = "";
-    },
-    importRoutes() {
-      this.routeImportLoading = true;
-      const ipList = this.routeImportForm.ip_list.trim() === "" ? [] : this.routeImportForm.ip_list.trim().split("\n");
-      const parseResult = this.parseRouteLines(ipList, this.routeImportForm.type);
-      if (!parseResult.valid) {
-        this.$message.error(parseResult.message);
-        this.routeImportLoading = false;
-        return;
-      }
-      const type = this.routeImportForm.type;
-      let nextRoutes = parseResult.routes;
-      if (this.routeImportForm.mode == "append") {
-        nextRoutes = this.mergeRoutes(this.ruleForm[type], parseResult.routes);
-      }
-      if (nextRoutes.length > this.maxRouteRows) {
-        this.$message.error("错误：路由数量超出限制，最多 " + this.maxRouteRows + " 条");
-        this.routeImportLoading = false;
-        return;
-      }
-      this.ruleForm[type] = nextRoutes;
-      this.routeSelection[type] = [];
-      this.routeImportLoading = false;
-      this.routeImportDialog = false;
-      this.$message.success("导入成功，共 " + parseResult.routes.length + " 条");
-    },
-    parseRouteLines(lines, type) {
       let arr = [];
-      for (let i = 0; i < lines.length; i++) {
-        let item = lines[i];
+      for (let i = 0; i < ipList.length; i++) {
+        let item = ipList[i];
         if (item.trim() === "") {
           continue;
         }
@@ -952,93 +845,25 @@ export default {
         if (ip.length > 2) {
           ip[1] = ip.slice(1).join(",");
         }
-        let val = ip[0].trim();
-        let note = ip[1] ? ip[1].trim() : "";
+        let note = ip[1] ? ip[1] : "";
         const pushToArr = () => {
-          arr.push({val: val, note: note});
+          arr.push({val: ip[0], note: note});
         };
-        if (type == "route_include" && val == "all") {
+        if (this.ipEditForm.type == "route_include" && ip[0] == "all") {
           pushToArr();
           continue;
         }
-        let valid = this.isValidCIDR(val);
+        let valid = this.isValidCIDR(ip[0]);
         if (!valid.valid) {
-          return {
-            valid: false,
-            message: "错误：第 " + (i + 1) + " 行CIDR格式错误，建议 " + val + " 改为 " + valid.suggestion
-          };
+          this.$message.error("错误：CIDR格式错误，建议 " + ip[0] + " 改为 " + valid.suggestion);
+          this.ipEditLoading = false;
+          return;
         }
         pushToArr();
       }
-      return {valid: true, routes: this.mergeRoutes([], arr)};
-    },
-    mergeRoutes(currentRoutes, importRoutes) {
-      const routeMap = {};
-      const result = [];
-      const addRoute = (item) => {
-        if (!item || !item.val || routeMap[item.val]) {
-          return;
-        }
-        routeMap[item.val] = true;
-        result.push({val: item.val, note: item.note || ""});
-      };
-      currentRoutes.forEach(addRoute);
-      importRoutes.forEach(addRoute);
-      return result;
-    },
-    selectRouteItems(type, checked) {
-      if (checked) {
-        this.routeSelection[type] = this.ruleForm[type].map((_, index) => index);
-      } else {
-        this.routeSelection[type] = [];
-      }
-    },
-    exportRoutes(type) {
-      this.normalizeRouteSelection();
-      const selected = this.routeSelection[type].slice().sort((a, b) => a - b);
-      if (selected.length === 0) {
-        this.$message.error("请先选择要导出的路由");
-        return;
-      }
-      const lines = selected.map(index => {
-        const item = this.ruleForm[type][index];
-        return item.val + (item.note ? "," + item.note : "");
-      });
-      const blob = new Blob([lines.join("\n") + "\n"], {type: "text/plain;charset=utf-8"});
-      const link = document.createElement("a");
-      const href = URL.createObjectURL(blob);
-      link.href = href;
-      link.download = type + "_" + new Date().getTime() + ".txt";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(href);
-    },
-    normalizeRouteSelection() {
-      ["route_include", "route_exclude"].forEach(type => {
-        const maxIndex = this.ruleForm[type].length - 1;
-        this.routeSelection[type] = this.routeSelection[type].filter(index => index >= 0 && index <= maxIndex);
-      });
-    },
-    shiftRouteSelectionAfterRemove(arr, removedIndex) {
-      let type = "";
-      if (arr === this.ruleForm.route_include) {
-        type = "route_include";
-      } else if (arr === this.ruleForm.route_exclude) {
-        type = "route_exclude";
-      }
-      if (!type) {
-        this.normalizeRouteSelection();
-        return;
-      }
-      this.routeSelection[type] = this.routeSelection[type]
-          .filter(index => index !== removedIndex)
-          .map(index => index > removedIndex ? index - 1 : index);
-      this.normalizeRouteSelection();
-    },
-    clearRouteSelection() {
-      this.routeSelection.route_include = [];
-      this.routeSelection.route_exclude = [];
+      this.ruleForm[this.ipEditForm.type] = arr;
+      this.ipEditLoading = false;
+      this.ipListDialog = false;
     },
     isValidCIDR(input) {
       const cidrRegex = /^((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)\/([12]?\d|3[0-2])$/;
@@ -1144,24 +969,6 @@ export default {
 
 .drag-handle {
   cursor: move;
-}
-
-.route-actions {
-  text-align: right;
-  white-space: nowrap;
-}
-
-.route-actions .el-button {
-  padding-left: 4px;
-  padding-right: 4px;
-}
-
-.route-select-col {
-  text-align: center;
-}
-
-.route-select-col ::v-deep .el-checkbox__label {
-  padding-left: 0;
 }
 
 </style>
