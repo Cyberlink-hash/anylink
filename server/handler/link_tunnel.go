@@ -116,8 +116,10 @@ func LinkTunnel(w http.ResponseWriter, r *http.Request) {
 	if cmpName, ok := cSess.SetPickCmp("cstp", r.Header.Get("X-Cstp-Accept-Encoding")); ok {
 		HttpSetHeader(w, "X-CSTP-Content-Encoding", cmpName)
 	}
-	if cmpName, ok := cSess.SetPickCmp("dtls", r.Header.Get("X-Dtls-Accept-Encoding")); ok {
-		HttpSetHeader(w, "X-DTLS-Content-Encoding", cmpName)
+	if base.Cfg.ServerDTLS {
+		if cmpName, ok := cSess.SetPickCmp("dtls", r.Header.Get("X-Dtls-Accept-Encoding")); ok {
+			HttpSetHeader(w, "X-DTLS-Content-Encoding", cmpName)
+		}
 	}
 
 	// 设置用户策略
@@ -163,8 +165,10 @@ func LinkTunnel(w http.ResponseWriter, r *http.Request) {
 
 	HttpSetHeader(w, "X-CSTP-Rekey-Time", "86400") // 172800
 	HttpSetHeader(w, "X-CSTP-Rekey-Method", "new-tunnel")
-	HttpSetHeader(w, "X-DTLS-Rekey-Time", "86400")
-	HttpSetHeader(w, "X-DTLS-Rekey-Method", "new-tunnel")
+	if base.Cfg.ServerDTLS {
+		HttpSetHeader(w, "X-DTLS-Rekey-Time", "86400")
+		HttpSetHeader(w, "X-DTLS-Rekey-Method", "new-tunnel")
+	}
 
 	HttpSetHeader(w, "X-CSTP-DPD", fmt.Sprintf("%d", cstpDpd))
 	HttpSetHeader(w, "X-CSTP-Keepalive", fmt.Sprintf("%d", cstpKeepalive))
@@ -173,13 +177,14 @@ func LinkTunnel(w http.ResponseWriter, r *http.Request) {
 	HttpSetHeader(w, "X-CSTP-Smartcard-Removal-Disconnect", "true")
 
 	HttpSetHeader(w, "X-CSTP-MTU", fmt.Sprintf("%d", cSess.Mtu)) // 1399
-	HttpSetHeader(w, "X-DTLS-MTU", fmt.Sprintf("%d", cSess.Mtu))
-
-	HttpSetHeader(w, "X-DTLS-Session-ID", sess.DtlsSid)
-	HttpSetHeader(w, "X-DTLS-Port", dtlsPort)
-	HttpSetHeader(w, "X-DTLS-DPD", fmt.Sprintf("%d", cstpDpd))
-	HttpSetHeader(w, "X-DTLS-Keepalive", fmt.Sprintf("%d", cstpKeepalive))
-	HttpSetHeader(w, "X-DTLS12-CipherSuite", dtlsCiphersuite)
+	if base.Cfg.ServerDTLS {
+		HttpSetHeader(w, "X-DTLS-MTU", fmt.Sprintf("%d", cSess.Mtu))
+		HttpSetHeader(w, "X-DTLS-Session-ID", sess.DtlsSid)
+		HttpSetHeader(w, "X-DTLS-Port", dtlsPort)
+		HttpSetHeader(w, "X-DTLS-DPD", fmt.Sprintf("%d", cstpDpd))
+		HttpSetHeader(w, "X-DTLS-Keepalive", fmt.Sprintf("%d", cstpKeepalive))
+		HttpSetHeader(w, "X-DTLS12-CipherSuite", dtlsCiphersuite)
+	}
 
 	HttpSetHeader(w, "X-CSTP-License", "accept")
 	HttpSetHeader(w, "X-CSTP-Routing-Filtering-Ignore", "false")
