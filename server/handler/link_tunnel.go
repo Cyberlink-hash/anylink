@@ -192,11 +192,9 @@ func LinkTunnel(w http.ResponseWriter, r *http.Request) {
 	HttpSetHeader(w, "X-CSTP-Disable-Always-On-VPN", "false")
 	HttpSetHeader(w, "X-CSTP-Client-Bypass-Protocol", "true")
 	HttpSetHeader(w, "X-CSTP-TCP-Keepalive", "false")
-	// Apple Silicon Mac 可运行 iPad 版 Secure Client，该客户端会声明 mobile license。
-	if supportsDynamicSplitDomains(mobile, sess.UserAgent) {
-		if err := SetPostAuthXml(cSess.Group, w); err != nil {
-			base.Error("set dynamic split domains:", err)
-		}
+	// 设置域名拆分隧道（移动端不支持）
+	if mobile != "mobile" {
+		SetPostAuthXml(cSess.Group, w)
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -239,14 +237,6 @@ func LinkTunnel(w http.ResponseWriter, r *http.Request) {
 	}, cSess.UserAgent)
 
 	go LinkCstp(conn, bufRW, cSess)
-}
-
-func supportsDynamicSplitDomains(license, userAgent string) bool {
-	if license != "mobile" {
-		return true
-	}
-
-	return strings.Contains(strings.ToLower(userAgent), "applesslvpn_darwin_arm (ipad)")
 }
 
 // 设置域名拆分隧道
