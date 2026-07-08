@@ -271,13 +271,19 @@ func SetUserPolicy(username string, g *dbdata.Group) {
 	dbdata.CompatPolicyDns(userPolicy)
 	if userPolicy.Id != 0 && userPolicy.Status == 1 {
 		base.Debug(username + " use UserPolicy")
-		g.AllowLan = userPolicy.AllowLan
-		g.NoGlobalDns = userPolicy.NoGlobalDns
-		g.ClientDns = userPolicy.ClientDns
-		g.SplitDns = userPolicy.SplitDns
-		g.RouteInclude = userPolicy.RouteInclude
-		g.RouteExclude = userPolicy.RouteExclude
-		g.DsExcludeDomains = userPolicy.DsExcludeDomains
-		g.DsIncludeDomains = userPolicy.DsIncludeDomains
+		applyUserPolicy(g, userPolicy)
 	}
+}
+
+func applyUserPolicy(g *dbdata.Group, userPolicy *dbdata.Policy) {
+	g.AllowLan = userPolicy.AllowLan
+	g.ClientDns = userPolicy.ClientDns
+	if userPolicy.NoGlobalDns || len(userPolicy.SplitDns) > 0 {
+		g.NoGlobalDns = userPolicy.NoGlobalDns
+		g.SplitDns = userPolicy.SplitDns
+	}
+	g.RouteInclude = userPolicy.RouteInclude
+	g.RouteExclude = userPolicy.RouteExclude
+	g.DsExcludeDomains = userPolicy.DsExcludeDomains
+	g.DsIncludeDomains = userPolicy.DsIncludeDomains
 }
