@@ -165,7 +165,7 @@ func LinkTunnel(w http.ResponseWriter, r *http.Request) {
 	HttpSetHeader(w, "X-CSTP-Idle-Timeout", "18000")
 	HttpSetHeader(w, "X-CSTP-Disconnected-Timeout", "18000")
 	HttpSetHeader(w, "X-CSTP-Keep", "true")
-	HttpSetHeader(w, "X-CSTP-Tunnel-All-DNS", fmt.Sprintf("%t", !noGlobalDns))
+	HttpSetHeader(w, "X-CSTP-Tunnel-All-DNS", "false")
 
 	HttpSetHeader(w, "X-CSTP-Rekey-Time", "86400") // 172800
 	HttpSetHeader(w, "X-CSTP-Rekey-Method", "new-tunnel")
