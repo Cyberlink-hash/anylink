@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httputil"
+	"regexp"
 	"strings"
 	"text/template"
 
@@ -18,6 +19,11 @@ import (
 var (
 	profileHash = ""
 	certHash    = ""
+)
+
+var (
+	clientErrorNetDetailsRe = regexp.MustCompile(`\s+(?:unable to read LDAP response packet|read tcp|dial tcp|lookup)\b.*$`)
+	clientErrorAddrRe       = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}:\d+\b`)
 )
 
 func LinkAuth(w http.ResponseWriter, r *http.Request) {
@@ -112,7 +118,7 @@ func LinkAuth(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		data := RequestData{Group: cr.GroupSelect, Groups: dbdata.GetGroupNamesNormal(), Error: "用户名或密码错误"}
 		if base.Cfg.DisplayError {
-			data.Error = err.Error()
+			data.Error = clientAuthError(err)
 		}
 		tplRequest(tpl_request, w, data)
 		return
@@ -174,6 +180,15 @@ func tplRequest(typ int, w io.Writer, data RequestData) {
 		t, _ := template.New("auth_otp").Parse(auth_otp)
 		_ = t.Execute(w, data)
 	}
+}
+
+func clientAuthError(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := clientErrorNetDetailsRe.ReplaceAllString(err.Error(), "")
+	msg = clientErrorAddrRe.ReplaceAllString(msg, "[已隐藏地址]")
+	return strings.TrimSpace(msg)
 }
 
 // 设置输出信息
