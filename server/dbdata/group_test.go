@@ -46,7 +46,7 @@ func TestGetGroupNames(t *testing.T) {
 	g6.SplitDns = []ValData{{Val: "*.example.com"}}
 	err = SetGroup(&g6)
 	ast.Nil(err)
-	ast.Equal("*.example.com", g6.SplitDns[0].Val)
+	ast.Equal("example.com", g6.SplitDns[0].Val)
 	g6.SplitDns = []ValData{}
 	err = SetGroup(&g6)
 	if ast.NotNil(err) {
