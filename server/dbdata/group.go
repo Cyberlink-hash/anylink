@@ -399,10 +399,11 @@ func normalizeSplitDns(datas []ValData) ([]ValData, error) {
 		if v.Val == "" {
 			continue
 		}
+		domain := v.Val
 		if strings.HasPrefix(v.Val, "*.") {
-			v.Val = strings.TrimPrefix(v.Val, "*.")
+			domain = strings.TrimPrefix(v.Val, "*.")
 		}
-		if !ValidateDomainName(v.Val) {
+		if !ValidateDomainName(domain) {
 			return nil, errors.New("域名 错误")
 		}
 		splitDns = append(splitDns, v)

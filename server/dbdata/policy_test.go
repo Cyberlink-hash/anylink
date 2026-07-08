@@ -38,7 +38,7 @@ func TestGetPolicy(t *testing.T) {
 	p4.SplitDns = []ValData{{Val: "*.example.com"}}
 	err = SetPolicy(&p4)
 	ast.Nil(err)
-	ast.Equal("example.com", p4.SplitDns[0].Val)
+	ast.Equal("*.example.com", p4.SplitDns[0].Val)
 	p4.SplitDns = []ValData{}
 	err = SetPolicy(&p4)
 	if ast.NotNil(err) {
