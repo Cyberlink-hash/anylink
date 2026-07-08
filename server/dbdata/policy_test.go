@@ -34,6 +34,16 @@ func TestGetPolicy(t *testing.T) {
 	ast.Nil(err)
 	// 判断 IpMask
 	ast.Equal(p4.RouteExclude[0].IpMask, "192.168.2.0/255.255.255.0")
+	p4.NoGlobalDns = true
+	p4.SplitDns = []ValData{{Val: "*.example.com"}}
+	err = SetPolicy(&p4)
+	ast.Nil(err)
+	ast.Equal("example.com", p4.SplitDns[0].Val)
+	p4.SplitDns = []ValData{}
+	err = SetPolicy(&p4)
+	if ast.NotNil(err) {
+		ast.Equal("关闭全局DNS，必须设置内网域名", err.Error())
+	}
 
 	// 判断所有数据
 	var userPolicy *Policy

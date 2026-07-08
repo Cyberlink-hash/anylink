@@ -42,6 +42,16 @@ func TestGetGroupNames(t *testing.T) {
 	g6 := Group{Name: "g6", ClientDns: []ValData{{Val: "114.114.114.114"}}, DsExcludeDomains: "com.cn,qq.com"}
 	err = SetGroup(&g6)
 	ast.Nil(err)
+	g6.NoGlobalDns = true
+	g6.SplitDns = []ValData{{Val: "*.example.com"}}
+	err = SetGroup(&g6)
+	ast.Nil(err)
+	ast.Equal("example.com", g6.SplitDns[0].Val)
+	g6.SplitDns = []ValData{}
+	err = SetGroup(&g6)
+	if ast.NotNil(err) {
+		ast.Equal("关闭全局DNS，必须设置内网域名", err.Error())
+	}
 
 	authData = map[string]interface{}{
 		"type": "ldap",

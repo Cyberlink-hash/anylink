@@ -177,6 +177,35 @@
                         </el-col>
                     </el-row>
                 </el-form-item>
+                <el-form-item label="全局DNS" prop="no_global_dns">
+                  <el-switch
+                      v-model="ruleForm.no_global_dns"
+                      :active-value="false"
+                      :inactive-value="true">
+                  </el-switch>
+                </el-form-item>
+                <el-form-item v-if="ruleForm.no_global_dns" label="内网域名" prop="split_dns">
+                    <el-row class="msg-info">
+                        <el-col :span="20">支持 example.com 和 *.example.com，匹配时使用客户端DNS</el-col>
+                        <el-col :span="4">
+                        <el-button size="mini" type="success" icon="el-icon-plus" circle
+                                    @click.prevent="addDomain(ruleForm.split_dns)"></el-button>
+                        </el-col>
+                    </el-row>
+                    <el-row v-for="(item,index) in ruleForm.split_dns"
+                            :key="index" style="margin-bottom: 5px" :gutter="10">
+                        <el-col :span="10">
+                        <el-input v-model="item.val"></el-input>
+                        </el-col>
+                        <el-col :span="12">
+                        <el-input v-model="item.note" placeholder="备注"></el-input>
+                        </el-col>
+                        <el-col :span="2">
+                        <el-button size="mini" type="danger" icon="el-icon-minus" circle
+                                    @click.prevent="removeDomain(ruleForm.split_dns,index)"></el-button>
+                        </el-col>
+                    </el-row>
+                </el-form-item>
                 <el-form-item label="状态" prop="status">
                     <el-radio-group v-model="ruleForm.status">
                         <el-radio :label="1" border>启用</el-radio>
@@ -278,7 +307,9 @@ export default {
         bandwidth: 0,
         status: 1,
         allow_lan: true,
+        no_global_dns: false,
         client_dns: [{val: '114.114.114.114'}],
+        split_dns: [],
         route_include: [{val: 'all', note: '默认全局代理'}],
         route_exclude: [],
         re_upper_limit : 0,        
@@ -374,6 +405,9 @@ export default {
           return false;
         }
 
+        if (!this.ruleForm.no_global_dns) {
+          this.ruleForm.split_dns = [];
+        }
         axios.post('/user/policy/set', this.ruleForm).then(resp => {
           const rdata = resp.data;
           if (rdata.code === 0) {

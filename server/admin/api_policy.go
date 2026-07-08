@@ -52,6 +52,7 @@ func PolicyDetail(w http.ResponseWriter, r *http.Request) {
 		RespError(w, RespInternalErr, err)
 		return
 	}
+	dbdata.CompatPolicyDns(&data)
 
 	RespSucess(w, data)
 }

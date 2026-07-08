@@ -75,10 +75,7 @@ func GroupDetail(w http.ResponseWriter, r *http.Request) {
 	if len(data.Auth) == 0 {
 		data.Auth["type"] = "local"
 	}
-	// 兼容旧数据
-	if data.SplitDns == nil {
-		data.SplitDns = []dbdata.ValData{}
-	}
+	dbdata.CompatGroupDns(&data)
 	RespSucess(w, data)
 }
 

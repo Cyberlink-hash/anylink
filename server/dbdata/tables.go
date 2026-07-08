@@ -10,6 +10,7 @@ type Group struct {
 	Name             string                 `json:"name" xorm:"varchar(60) not null unique"`
 	Note             string                 `json:"note" xorm:"varchar(255)"`
 	AllowLan         bool                   `json:"allow_lan" xorm:"Bool"`
+	NoGlobalDns      bool                   `json:"no_global_dns" xorm:"Bool"`
 	ClientDns        []ValData              `json:"client_dns" xorm:"Text"`
 	SplitDns         []ValData              `json:"split_dns" xorm:"Text"`
 	RouteInclude     []ValData              `json:"route_include" xorm:"Text"`
@@ -82,7 +83,9 @@ type Policy struct {
 	Id               int       `json:"id" xorm:"pk autoincr not null"`
 	Username         string    `json:"username" xorm:"varchar(60) not null unique"`
 	AllowLan         bool      `json:"allow_lan" xorm:"Bool"`
+	NoGlobalDns      bool      `json:"no_global_dns" xorm:"Bool"`
 	ClientDns        []ValData `json:"client_dns" xorm:"Text"`
+	SplitDns         []ValData `json:"split_dns" xorm:"Text"`
 	RouteInclude     []ValData `json:"route_include" xorm:"Text"`
 	RouteExclude     []ValData `json:"route_exclude" xorm:"Text"`
 	DsExcludeDomains string    `json:"ds_exclude_domains" xorm:"Text"`

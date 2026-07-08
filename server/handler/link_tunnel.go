@@ -134,8 +134,12 @@ func LinkTunnel(w http.ResponseWriter, r *http.Request) {
 		HttpAddHeader(w, "X-CSTP-DNS", v.Val)
 	}
 	// 分割dns
-	for _, v := range cSess.Group.SplitDns {
-		HttpAddHeader(w, "X-CSTP-Split-DNS", v.Val)
+	dbdata.CompatGroupDns(cSess.Group)
+	noGlobalDns := cSess.Group.NoGlobalDns
+	if noGlobalDns {
+		for _, v := range cSess.Group.SplitDns {
+			HttpAddHeader(w, "X-CSTP-Split-DNS", v.Val)
+		}
 	}
 
 	// 允许的路由
@@ -161,7 +165,7 @@ func LinkTunnel(w http.ResponseWriter, r *http.Request) {
 	HttpSetHeader(w, "X-CSTP-Idle-Timeout", "18000")
 	HttpSetHeader(w, "X-CSTP-Disconnected-Timeout", "18000")
 	HttpSetHeader(w, "X-CSTP-Keep", "true")
-	HttpSetHeader(w, "X-CSTP-Tunnel-All-DNS", "false")
+	HttpSetHeader(w, "X-CSTP-Tunnel-All-DNS", fmt.Sprintf("%t", !noGlobalDns))
 
 	HttpSetHeader(w, "X-CSTP-Rekey-Time", "86400") // 172800
 	HttpSetHeader(w, "X-CSTP-Rekey-Method", "new-tunnel")
@@ -264,10 +268,13 @@ func SetPostAuthXml(g *dbdata.Group, w http.ResponseWriter) error {
 // 设置用户策略, 覆盖Group的属性值
 func SetUserPolicy(username string, g *dbdata.Group) {
 	userPolicy := dbdata.GetPolicy(username)
+	dbdata.CompatPolicyDns(userPolicy)
 	if userPolicy.Id != 0 && userPolicy.Status == 1 {
 		base.Debug(username + " use UserPolicy")
 		g.AllowLan = userPolicy.AllowLan
+		g.NoGlobalDns = userPolicy.NoGlobalDns
 		g.ClientDns = userPolicy.ClientDns
+		g.SplitDns = userPolicy.SplitDns
 		g.RouteInclude = userPolicy.RouteInclude
 		g.RouteExclude = userPolicy.RouteExclude
 		g.DsExcludeDomains = userPolicy.DsExcludeDomains

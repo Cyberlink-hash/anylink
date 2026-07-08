@@ -256,9 +256,17 @@
               </el-row>
             </el-form-item>
 
-            <el-form-item label="内网域名" prop="split_dns">
+            <el-form-item label="全局DNS" prop="no_global_dns">
+              <el-switch
+                  v-model="ruleForm.no_global_dns"
+                  :active-value="false"
+                  :inactive-value="true">
+              </el-switch>
+            </el-form-item>
+
+            <el-form-item v-if="ruleForm.no_global_dns" label="内网域名" prop="split_dns">
               <el-row class="msg-info">
-                <el-col :span="20">(分割DNS)一般留空。如果输入域名，只有配置的域名(包含子域名)走配置的dns</el-col>
+                <el-col :span="20">支持 example.com 和 *.example.com，匹配时使用客户端DNS</el-col>
                 <el-col :span="4">
                   <el-button size="mini" type="success" icon="el-icon-plus" circle
                              @click.prevent="addDomain(ruleForm.split_dns)"></el-button>
@@ -573,6 +581,7 @@ export default {
         bandwidth_format: '0',
         status: 1,
         allow_lan: true,
+        no_global_dns: false,
         client_dns: [{val: '114.114.114.114', note: '默认dns'}],
         split_dns: [],
         route_include: [{val: 'all', note: '默认全局代理'}],
@@ -768,6 +777,9 @@ export default {
           return false;
         }
         this.ruleForm.bandwidth = this.convertBandwidth(this.ruleForm.bandwidth_format, 'Mbps', 'BYTE');
+        if (!this.ruleForm.no_global_dns) {
+          this.ruleForm.split_dns = [];
+        }
         axios.post('/group/set', this.ruleForm).then(resp => {
           const rdata = resp.data;
           if (rdata.code === 0) {

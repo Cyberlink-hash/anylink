@@ -83,6 +83,13 @@ func SetPolicy(p *Policy) error {
 		}
 	}
 	p.ClientDns = clientDns
+	p.SplitDns, err = normalizeSplitDns(p.SplitDns)
+	if err != nil {
+		return err
+	}
+	if p.NoGlobalDns && len(p.SplitDns) == 0 {
+		return errors.New("关闭全局DNS，必须设置内网域名")
+	}
 
 	// 域名拆分隧道，不能同时填写
 	p.DsIncludeDomains = strings.TrimSpace(p.DsIncludeDomains)

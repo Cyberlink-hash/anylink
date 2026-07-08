@@ -110,6 +110,24 @@ func GetGroupNamesIds() []GroupNameId {
 	return names
 }
 
+func CompatGroupDns(g *Group) {
+	if g.SplitDns == nil {
+		g.SplitDns = []ValData{}
+	}
+	if len(g.SplitDns) > 0 {
+		g.NoGlobalDns = true
+	}
+}
+
+func CompatPolicyDns(p *Policy) {
+	if p.SplitDns == nil {
+		p.SplitDns = []ValData{}
+	}
+	if len(p.SplitDns) > 0 {
+		p.NoGlobalDns = true
+	}
+}
+
 func SetGroup(g *Group) error {
 	var err error
 	if g.Name == "" {
@@ -252,18 +270,13 @@ func SetGroup(g *Group) error {
 	}
 	g.ClientDns = clientDns
 
-	splitDns := []ValData{}
-	for _, v := range g.SplitDns {
-		v.Val = strings.TrimSpace(v.Val)
-		if v.Val != "" {
-			ValidateDomainName(v.Val)
-			if !ValidateDomainName(v.Val) {
-				return errors.New("域名 错误")
-			}
-			splitDns = append(splitDns, v)
-		}
+	g.SplitDns, err = normalizeSplitDns(g.SplitDns)
+	if err != nil {
+		return err
 	}
-	g.SplitDns = splitDns
+	if g.NoGlobalDns && len(g.SplitDns) == 0 {
+		return errors.New("关闭全局DNS，必须设置内网域名")
+	}
 
 	// 域名拆分隧道，不能同时填写
 	g.DsIncludeDomains = strings.TrimSpace(g.DsIncludeDomains)
@@ -377,6 +390,24 @@ func CheckDomainNames(domains string) error {
 		return fmt.Errorf("字符长度超出限制，最大%s个(不包含逗号), 请删减一些域名", p.Sprintf("%d", DsMaxLen))
 	}
 	return nil
+}
+
+func normalizeSplitDns(datas []ValData) ([]ValData, error) {
+	splitDns := []ValData{}
+	for _, v := range datas {
+		v.Val = strings.TrimSpace(v.Val)
+		if v.Val == "" {
+			continue
+		}
+		if strings.HasPrefix(v.Val, "*.") {
+			v.Val = strings.TrimPrefix(v.Val, "*.")
+		}
+		if !ValidateDomainName(v.Val) {
+			return nil, errors.New("域名 错误")
+		}
+		splitDns = append(splitDns, v)
+	}
+	return splitDns, nil
 }
 
 func ValidateDomainName(domain string) bool {
