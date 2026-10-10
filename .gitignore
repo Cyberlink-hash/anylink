@@ -12,3 +12,5 @@ artifact-dist
 anylink_amd64
 anylink_arm64
 WIREGUARD_192168_DEPLOY.md
+.DS_Store
+/doc/wg7-mac-bridge.md
