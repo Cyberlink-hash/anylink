@@ -416,6 +416,7 @@
           </el-tab-pane>
           <el-tab-pane label="权限控制" name="link_acl">
             <el-form-item label="权限控制" prop="link_acl">
+              <div class="msg-info">规则从上往下匹配；网络策略不满足则继续下一条。限制资源请配置兜底拒绝规则。修改后重连生效，组内 DNS 53 端口仍优先放行。</div>
               <el-row class="msg-info">
                 <el-col :span="22">输入CIDR格式如: 192.168.3.0/24
                   协议支持 all,tcp,udp,icmp
@@ -461,6 +462,12 @@
                 <el-col :span="2">
                   <el-button size="mini" type="danger" icon="el-icon-minus" circle
                              @click.prevent="removeDomain(ruleForm.link_acl,index)"></el-button>
+                </el-col>
+                <el-col :span="23" :offset="1">
+                  <el-select v-model="item.network_policy_id" placeholder="无网络策略（不限制用户及来源）" style="width: 100%" filterable>
+                    <el-option label="无网络策略（不限制用户及来源）" :value="0"></el-option>
+                    <el-option v-for="policy in networkPolicies" :key="policy.id" :label="policy.name" :value="policy.id"></el-option>
+                  </el-select>
                 </el-col>
               </el-row>
               </draggable>
@@ -557,6 +564,7 @@ export default {
     return {
       page: 1,
       tableData: [],
+      networkPolicies: [],
       count: 10,
       activeTab: "general",
       readMore: {},
@@ -679,6 +687,10 @@ export default {
       });
     },
     handleEdit(row) {
+      axios.get('/network_policy/list').then(resp => {
+        if (resp.data.code === 0) this.networkPolicies = resp.data.data.datas || [];
+        else this.$message.error(resp.data.msg);
+      }).catch(() => this.$message.error('网络策略加载失败'));
       !this.$refs['ruleForm'] || this.$refs['ruleForm'].resetFields();
       console.log(row)
       this.user_edit_dialog = true

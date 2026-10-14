@@ -25,6 +25,7 @@ const routes = [
             { path: 'user/ip_map', component: () => import('@/pages/user/IpMap') },
             { path: 'user/lockmanager', component: () => import('@/pages/user/LockManager') },
 
+            { path: 'network_policy/list', component: () => import('@/pages/network_policy/List') },
             { path: 'group/list', component: () => import('@/pages/group/List') },
 
         ],

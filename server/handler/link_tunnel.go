@@ -53,6 +53,11 @@ func LinkTunnel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := dbdata.CheckUserEnabled(sess.Username); err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
 	// 开启link
 	cSess := sess.NewConn()
 	if cSess == nil {
@@ -73,6 +78,7 @@ func LinkTunnel(w http.ResponseWriter, r *http.Request) {
 	cSess.SetMtu(cstpMtu)
 	cSess.MasterSecret = masterSecret
 	cSess.RemoteAddr = r.RemoteAddr
+	cSess.NetworkPolicies = dbdata.MatchNetworkPolicies(cSess.Group, cSess.Username, cSess.RemoteAddr)
 	cSess.UserAgent = strings.ToLower(r.UserAgent())
 	cSess.LocalIp = net.ParseIP(localIp)
 	cstpKeepalive := base.Cfg.CstpKeepalive

@@ -28,6 +28,7 @@ const (
 const DsMaxLen = 20000
 
 type GroupLinkAcl struct {
+	NetworkPolicyId int `json:"network_policy_id,omitempty"`
 	// 自上而下匹配 默认 allow * *
 	Action   string               `json:"action"`      // allow、deny
 	Protocol string               `json:"protocol"`    // 支持 ALL、TCP、UDP、ICMP 协议
@@ -129,6 +130,8 @@ func CompatPolicyDns(p *Policy) {
 }
 
 func SetGroup(g *Group) error {
+	networkPolicyMux.Lock()
+	defer networkPolicyMux.Unlock()
 	var err error
 	if g.Name == "" {
 		return errors.New("用户组名错误")
@@ -181,6 +184,14 @@ func SetGroup(g *Group) error {
 	// 转换数据
 	linkAcl := []GroupLinkAcl{}
 	for _, v := range g.LinkAcl {
+		if v.NetworkPolicyId != 0 {
+			if v.NetworkPolicyId < 0 {
+				return errors.New("网络策略错误")
+			}
+			if err := One("Id", v.NetworkPolicyId, &NetworkPolicy{}); err != nil {
+				return errors.New("网络策略不存在或无法读取")
+			}
+		}
 		if v.Val != "" {
 			_, ipNet, err := parseIpNet(v.Val)
 			if err != nil {

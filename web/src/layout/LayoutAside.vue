@@ -47,6 +47,7 @@
       </template>
 
       <el-menu-item index="/admin/group/list">用户组列表</el-menu-item>
+      <el-menu-item index="/admin/network_policy/list">网络策略组</el-menu-item>
     </el-submenu>
 
     <el-submenu index="4">

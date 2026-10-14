@@ -60,6 +60,9 @@ func StartAdmin() {
 	r.HandleFunc("/set/other/customcert", CustomCert)
 
 	r.HandleFunc("/user/list", UserList)
+	r.HandleFunc("/user/batch", UserBatch).Methods(http.MethodPost)
+	r.HandleFunc("/user/ldap/groups", LDAPSyncGroups).Methods(http.MethodGet)
+	r.HandleFunc("/user/ldap/sync", UserSyncLDAP).Methods(http.MethodPost)
 	r.HandleFunc("/user/detail", UserDetail)
 	r.HandleFunc("/user/set", UserSet)
 	r.HandleFunc("/user/uploaduser", UserUpload).Methods(http.MethodPost)
@@ -76,6 +79,11 @@ func StartAdmin() {
 	r.HandleFunc("/user/policy/detail", PolicyDetail)
 	r.HandleFunc("/user/policy/set", PolicySet)
 	r.HandleFunc("/user/policy/del", PolicyDel)
+
+	r.HandleFunc("/network_policy/list", NetworkPolicyList).Methods(http.MethodGet)
+	r.HandleFunc("/network_policy/detail", NetworkPolicyDetail).Methods(http.MethodGet)
+	r.HandleFunc("/network_policy/set", NetworkPolicySet).Methods(http.MethodPost)
+	r.HandleFunc("/network_policy/del", NetworkPolicyDel).Methods(http.MethodPost)
 
 	r.HandleFunc("/group/list", GroupList)
 	r.HandleFunc("/group/names", GroupNames)

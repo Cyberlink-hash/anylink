@@ -25,6 +25,7 @@ var (
 
 // 连接sess
 type ConnSession struct {
+	NetworkPolicies     map[int]bool
 	Sess                *Session
 	MasterSecret        string // dtls协议的 master_secret
 	IpAddr              net.IP // 分配的ip地址
@@ -499,4 +500,19 @@ func AddUserActLogBySess(sess *Session, code ...uint8) {
 		ua.Info = dbdata.UserActLogIns.GetInfoOpsById(code[0])
 	}
 	dbdata.UserActLogIns.Add(ua, sess.UserAgent)
+}
+
+// CloseUserSessions 同时清除活跃和休眠会话，避免停用后复用隧道。
+func CloseUserSessions(username string) {
+	tokens := []string{}
+	sessMux.RLock()
+	for token, session := range sessions {
+		if session.Username == username {
+			tokens = append(tokens, token)
+		}
+	}
+	sessMux.RUnlock()
+	for _, token := range tokens {
+		CloseSess(token, dbdata.UserLogoutAdmin)
+	}
 }

@@ -111,6 +111,11 @@ func DeleteCookie(w http.ResponseWriter, name string) {
 	http.SetCookie(w, cookie)
 }
 func CreateSession(w http.ResponseWriter, r *http.Request, authSession *AuthSession) {
+	if err := dbdata.CheckUserEnabled(authSession.ClientRequest.Auth.Username); err != nil {
+		http.Error(w, "用户已停用或过期，请重新登录", http.StatusForbidden)
+		return
+	}
+
 	cr := authSession.ClientRequest
 	ua := authSession.UserActLog
 

@@ -29,6 +29,8 @@ import (
 // }
 
 func SetUser(v *User) error {
+	userWriteMu.Lock()
+	defer userWriteMu.Unlock()
 	var err error
 	if v.Username == "" || len(v.Groups) == 0 {
 		return errors.New("用户名或组错误")
@@ -100,10 +102,15 @@ func CheckUser(name, pwd, group string, ext map[string]interface{}) error {
 	if err != nil {
 		return err
 	}
-	return SyncExternalUser(name, group, authType)
+	if err := SyncExternalUser(name, group, authType); err != nil {
+		return err
+	}
+	return CheckUserEnabled(name)
 }
 
 func SyncExternalUser(name, group, authType string) error {
+	userWriteMu.Lock()
+	defer userWriteMu.Unlock()
 	if name == "" || group == "" || authType == "" || authType == "local" {
 		return nil
 	}

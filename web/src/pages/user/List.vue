@@ -1,7 +1,7 @@
 <template>
   <div>
     <el-card>
-      <el-form :inline="true">
+      <el-form :inline="true" @submit.native.prevent="handleSearch">
         <el-form-item>
           <el-button size="small" type="primary" icon="el-icon-plus" @click="handleEdit('')">添加
           </el-button>
@@ -21,9 +21,12 @@
             </el-dropdown-menu>
           </el-dropdown>
         </el-form-item>
-        <el-form-item label="用户名或姓名或邮箱:">
+        <el-form-item>
+          <el-button size="small" type="primary" icon="el-icon-refresh" @click="openLDAPSync" :loading="syncLoading">同步 LDAP 用户</el-button>
+        </el-form-item>
+        <el-form-item label="用户名 / 姓名 / 邮箱">
           <el-input size="small" v-model="searchData" placeholder="请输入内容"
-            @keydown.enter.native="searchEnterFun"></el-input>
+            @keydown.enter.native.prevent="searchEnterFun" clearable></el-input>
         </el-form-item>
 
         <el-form-item>
@@ -32,9 +35,21 @@
           <el-button size="small" icon="el-icon-refresh" @click="reset">重置搜索
           </el-button>
         </el-form-item>
+        <el-form-item label="用户组"><el-select v-model="filters.group" clearable filterable size="small" placeholder="全部" @change="handleSearch"><el-option v-for="name in grouNames" :key="name" :label="name" :value="name"></el-option></el-select></el-form-item>
+        <el-form-item label="类型"><el-select v-model="filters.auth_type" clearable size="small" placeholder="全部" @change="handleSearch"><el-option v-for="type in ['local', 'ldap', 'radius']" :key="type" :label="type" :value="type"></el-option></el-select></el-form-item>
+        <el-form-item label="状态"><el-select v-model="filters.status" clearable size="small" placeholder="全部" @change="handleSearch"><el-option label="启用" value="1"></el-option><el-option label="停用" value="0"></el-option><el-option label="过期" value="2"></el-option></el-select></el-form-item>
+        <el-form-item label="OTP"><el-select v-model="filters.otp" clearable size="small" placeholder="全部" @change="handleSearch"><el-option label="已开启" value="enabled"></el-option><el-option label="未开启" value="disabled"></el-option></el-select></el-form-item>
       </el-form>
 
-      <el-table ref="multipleTable" :data="tableData" border>
+      <div class="user-actions">
+        <span>已选 {{ selectedUsers.length }} 人（仅当前页）</span>
+        <el-select v-model="batchAction" size="small" placeholder="批量操作" style="width: 150px">
+          <el-option v-for="item in batchActions" :key="item.value" :label="item.label" :value="item.value"></el-option>
+        </el-select>
+        <el-button size="small" :disabled="!selectedUsers.length || !batchAction || loading" :loading="batchLoading" @click="runBatch">执行</el-button>
+      </div>
+      <el-table ref="multipleTable" :data="tableData" v-loading="loading" @selection-change="selectedUsers = $event" row-key="id" border>
+        <el-table-column type="selection" width="45"></el-table-column>
 
         <el-table-column sortable="true" prop="id" label="ID" width="60">
         </el-table-column>
@@ -53,11 +68,12 @@
 
         <el-table-column prop="email" label="邮箱">
         </el-table-column>
-        <el-table-column prop="otp_secret" label="OTP密钥" width="110">
+        <el-table-column prop="disable_otp" label="OTP认证" width="130">
           <template slot-scope="scope">
             <el-button v-if="!scope.row.disable_otp" type="text" icon="el-icon-view" @click="getOtpImg(scope.row)">
-              {{ scope.row.otp_secret.substring(0, 6) }}
+              已开启 · 查看
             </el-button>
+            <el-tag v-else size="small" type="info">未开启</el-tag>
           </template>
         </el-table-column>
 
@@ -105,12 +121,28 @@
 
       <div class="sh-20"></div>
 
-      <el-pagination background layout="prev, pager, next" :pager-count="11" @current-change="pageChange"
-        :current-page="page" :total="count">
+      <el-pagination background layout="total, prev, pager, next" :pager-count="11" @current-change="pageChange"
+        :current-page="page" :page-size="10" :total="count">
       </el-pagination>
 
     </el-card>
 
+    <el-dialog title="同步 LDAP 用户" :visible.sync="syncDialog" width="600px" :close-on-click-modal="false" :close-on-press-escape="!syncLoading" :show-close="!syncLoading">
+      <el-alert type="info" :closable="false" title="新增用户默认开启 OTP 并发送一次邮件。已有用户保留 OTP 和停用设置；不会删除用户或移除组。"></el-alert>
+      <el-select v-model="syncGroupIDs" multiple placeholder="选择已有 LDAP 用户组" style="width: 100%; margin-top: 16px" :disabled="syncLoading">
+        <el-option v-for="group in ldapGroups" :key="group.id" :label="group.name" :value="group.id"></el-option>
+      </el-select>
+      <span slot="footer"><el-button @click="syncDialog = false" :disabled="syncLoading">取消</el-button><el-button type="primary" @click="syncLDAP" :loading="syncLoading" :disabled="!syncGroupIDs.length">开始同步</el-button></span>
+    </el-dialog>
+    <el-dialog title="操作结果" :visible.sync="resultDialog" width="760px">
+      <p>{{ resultSummary }}</p>
+      <el-table :data="operationResults" max-height="400" border>
+        <el-table-column prop="username" label="用户" width="130"></el-table-column>
+        <el-table-column prop="group" label="用户组" width="130"></el-table-column>
+        <el-table-column prop="result" label="结果" width="100"></el-table-column>
+        <el-table-column prop="detail" label="详情"></el-table-column>
+      </el-table>
+    </el-dialog>
     <el-dialog title="OTP密钥" :visible.sync="otpImgData.visible" width="350px" center>
       <div style="text-align: center">{{ otpImgData.username }} : {{ otpImgData.nickname }}</div>
       <img :src="otpImgData.base64Img" alt="otp-img" />
@@ -134,7 +166,7 @@
           <el-input v-model="ruleForm.email"></el-input>
         </el-form-item>
 
-        <el-form-item label="PIN码" prop="pin_code">
+        <el-form-item label="PIN码" prop="pin_code" v-if="ruleForm.auth_type !== 'ldap'">
           <el-input v-model="ruleForm.pin_code" placeholder="不填由系统自动生成"></el-input>
         </el-form-item>
 
@@ -144,8 +176,8 @@
           </el-date-picker>
         </el-form-item>
 
-        <el-form-item label="禁用OTP" prop="disable_otp">
-          <el-switch v-model="ruleForm.disable_otp" active-text="开启OTP后，用户密码为PIN码,OTP密码为扫码后生成的动态码">
+        <el-form-item label="开启OTP" prop="disable_otp">
+          <el-switch v-model="ruleForm.disable_otp" :active-value="false" :inactive-value="true" active-text="已开启动态码认证">
           </el-switch>
         </el-form-item>
 
@@ -203,6 +235,20 @@ export default {
   data() {
     return {
       page: 1,
+      loading: false,
+      requestID: 0,
+      selectedUsers: [],
+      batchAction: '',
+      batchLoading: false,
+      batchActions: [{value: 'enable', label: '启用'}, {value: 'disable', label: '停用'}, {value: 'otp_enable', label: '开启 OTP'}, {value: 'otp_disable', label: '关闭 OTP'}, {value: 'delete', label: '删除'}],
+      filters: {group: '', auth_type: '', status: '', otp: ''},
+      syncDialog: false,
+      syncLoading: false,
+      syncGroupIDs: [],
+      ldapGroups: [],
+      resultDialog: false,
+      resultSummary: '',
+      operationResults: [],
       grouNames: [],
       tableData: [],
       count: 10,
@@ -307,6 +353,7 @@ export default {
       console.log(row)
       this.user_edit_dialog = true
       if (!row) {
+        this.ruleForm = {send_email: true, status: 1, groups: [], disable_otp: false, auth_type: 'local'};
         return;
       }
 
@@ -331,21 +378,21 @@ export default {
     pageChange(p) {
       this.getData(p)
     },
-    getData(page, prefix) {
-      this.page = page
-      axios.get('/user/list', {
-        params: {
-          page: page,
-          prefix: prefix || '',
-        }
-      }).then(resp => {
-        var data = resp.data.data
-        console.log(data);
-        this.tableData = data.datas;
-        this.count = data.count
-      }).catch(error => {
-        this.$message.error('哦，请求出错');
-        console.log(error);
+    getData(page) {
+      this.page = page;
+      this.loading = true;
+      this.selectedUsers = [];
+      if (this.$refs.multipleTable) this.$refs.multipleTable.clearSelection();
+      const requestID = ++this.requestID;
+      axios.get('/user/list', {params: Object.assign({page: page, prefix: this.searchData.trim()}, this.filters)}).then(resp => {
+        if (requestID !== this.requestID) return;
+        if (resp.data.code !== 0) { this.$message.error(resp.data.msg); return; }
+        const data = resp.data.data;
+        this.tableData = data.datas || [];
+        this.count = data.count;
+        if (!this.tableData.length && page > 1) this.getData(page - 1);
+      }).catch(() => this.$message.error('用户列表加载失败')).finally(() => {
+        if (requestID === this.requestID) this.loading = false;
       });
     },
     getGroups() {
@@ -386,17 +433,53 @@ export default {
       this.$refs[formName].resetFields();
     },
     searchEnterFun(e) {
-      var keyCode = window.event ? e.keyCode : e.which;
-      if (keyCode == 13) {
-        this.handleSearch()
-      }
+      if (!e.isComposing && e.keyCode !== 229) this.handleSearch();
+    },
+    runBatch() {
+      const action = this.batchAction;
+      const ids = this.selectedUsers.map(user => user.id);
+      const label = this.batchActions.find(item => item.value === action).label;
+      const hint = action === 'delete' ? '删除 LDAP 用户仅删除本地记录，后续同步或登录可能重新创建。' : action === 'disable' ? '停用将同时断开在线连接。' : '';
+      this.$confirm('确定对选中的 ' + ids.length + ' 位用户执行“' + label + '”？' + hint, '批量操作').then(() => {
+        this.batchLoading = true;
+        axios.post('/user/batch', {ids, action}).then(resp => {
+          if (resp.data.code !== 0) { this.$message.error(resp.data.msg); return; }
+          this.operationResults = resp.data.data;
+          this.resultSummary = '批量' + label + '完成，详情如下：';
+          this.resultDialog = true;
+          this.getData(this.page);
+        }).catch(() => this.$message.error('批量操作请求失败，请刷新确认结果')).finally(() => { this.batchLoading = false; });
+      }).catch(() => {});
+    },
+    openLDAPSync() {
+      axios.get('/user/ldap/groups').then(resp => {
+        if (resp.data.code !== 0) { this.$message.error(resp.data.msg); return; }
+        this.ldapGroups = resp.data.data || [];
+        this.syncGroupIDs = [];
+        this.syncDialog = true;
+      }).catch(() => this.$message.error('LDAP 用户组加载失败'));
+    },
+    syncLDAP() {
+      this.syncLoading = true;
+      axios.post('/user/ldap/sync', {group_ids: this.syncGroupIDs}).then(resp => {
+        if (resp.data.code !== 0) { this.$message.error(resp.data.msg); return; }
+        const result = resp.data.data;
+        this.operationResults = result.results;
+        this.resultSummary = '新增 ' + result.created + ' 人，更新 ' + result.updated + ' 人；邮件发送成功 ' + result.mail_sent + ' 封，失败 ' + result.mail_failed + ' 封。失败或跳过详情如下，补发邮件可在用户编辑页操作。';
+        this.resultDialog = true;
+        this.syncDialog = false;
+        this.getData(1);
+      }).catch(() => this.$message.error('同步请求失败，请刷新用户列表确认执行结果')).finally(() => { this.syncLoading = false; });
     },
     reset() {
       this.searchData = "";
+      this.filters = {group: '', auth_type: '', status: '', otp: ''};
       this.handleSearch();
     },
   },
 }
 </script>
 
-<style scoped></style>
+<style scoped>
+.user-actions { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+</style>

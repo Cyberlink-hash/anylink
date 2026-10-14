@@ -38,17 +38,8 @@ func UserList(w http.ResponseWriter, r *http.Request) {
 		err      error
 	)
 
-	// 查询前缀匹配
-	if len(prefix) > 0 {
-		fuzzy := "%" + prefix + "%"
-		where := "username LIKE ? OR nickname LIKE ? OR email LIKE ?"
-
-		count = dbdata.FindWhereCount(&dbdata.User{}, where, fuzzy, fuzzy, fuzzy)
-		err = dbdata.FindWhere(&datas, pageSize, page, where, fuzzy, fuzzy, fuzzy)
-	} else {
-		count = dbdata.CountAll(&dbdata.User{})
-		err = dbdata.Find(&datas, pageSize, page)
-	}
+	params := dbdata.UserFilter{Search: prefix, Group: r.FormValue("group"), AuthType: r.FormValue("auth_type"), Status: r.FormValue("status"), OTP: r.FormValue("otp")}
+	datas, count, err = dbdata.ListUsers(params, page, pageSize)
 
 	if err != nil && !dbdata.CheckErrNotFound(err) {
 		RespError(w, RespInternalErr, err)
@@ -234,6 +225,9 @@ type userAccountMailData struct {
 }
 
 func userAccountMail(user *dbdata.User) error {
+	if user.AuthType == "ldap" && !user.DisableOtp {
+		return ldapWelcomeMail(user)
+	}
 	// 平台通知
 	htmlBody := `
 <!DOCTYPE html>
