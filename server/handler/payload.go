@@ -8,7 +8,7 @@ import (
 func payloadIn(cSess *sessdata.ConnSession, pl *sessdata.Payload) bool {
 	if pl.LType == sessdata.LTypeIPData && pl.PType == 0x00 {
 		// 进行Acl规则判断
-		check := checkLinkAcl(cSess.Group, pl, cSess.NetworkPolicies)
+		check := checkLinkAcl(cSess.Group, pl, cSess.NetworkPolicies, cSess.NetworkPolicyRules)
 		if !check {
 			// 校验不通过直接丢弃
 			return false

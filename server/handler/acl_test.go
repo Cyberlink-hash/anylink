@@ -58,3 +58,105 @@ func TestNetworkPolicyACL(t *testing.T) {
 		t.Fatal("empty legacy ACL changed")
 	}
 }
+
+func TestNetworkPolicyRoutesAndSources(t *testing.T) {
+	rules := map[int][]dbdata.GroupLinkAcl{
+		1: {{Action: dbdata.Allow, Protocol: dbdata.TCP, Val: "10.30.0.10", Port: "443"}},
+		2: {{Action: dbdata.Allow, Protocol: dbdata.TCP, Val: "10.30.0.10", Port: "443"}},
+		3: {{Action: dbdata.Deny, Protocol: dbdata.TCP, Val: "10.30.0.10", Port: "443"}},
+	}
+	for _, list := range rules {
+		if err := dbdata.ValidateNetworkRules(list); err != nil {
+			t.Fatal(err)
+		}
+	}
+	policies := map[int]dbdata.NetworkPolicy{
+		1: {Usernames: []string{"zhangsan"}},
+		2: {Usernames: []string{"lisi"}, SourceIPs: []string{"203.0.113.1"}},
+		3: {Usernames: []string{"lisi"}},
+	}
+	packet := make([]byte, 40)
+	packet[0] = 0x45
+	packet[9] = byte(waterutil.TCP)
+	copy(packet[16:20], net.ParseIP("10.30.0.10").To4())
+	binary.BigEndian.PutUint16(packet[22:24], 443)
+	pl := &sessdata.Payload{LType: sessdata.LTypeIPData, Data: packet}
+	g := &dbdata.Group{RouteInclude: []dbdata.ValData{{Val: "10.30.0.0/24"}}, NetworkPolicyIDs: []int{1, 2, 3}}
+	for _, tc := range []struct {
+		name, user, source string
+		want               bool
+	}{
+		{"zhangsan anywhere", "zhangsan", "198.51.100.1:1234", true},
+		{"lisi office", "lisi", "203.0.113.1:1234", true},
+		{"lisi home", "lisi", "198.51.100.1:1234", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			matches := map[int]bool{}
+			for id, policy := range policies {
+				matches[id] = policy.Matches(tc.user, tc.source)
+			}
+			if checkLinkAcl(g, pl, matches, rules) != tc.want {
+				t.Fatal("access result mismatch")
+			}
+		})
+	}
+	matches := map[int]bool{1: true, 2: false, 3: false}
+	g.RouteInclude = []dbdata.ValData{{Val: "10.10.0.0/24"}}
+	if checkLinkAcl(g, pl, matches, rules) {
+		t.Fatal("policy escaped route boundary")
+	}
+	g.RouteInclude = []dbdata.ValData{{Val: "all"}}
+	g.RouteExclude = []dbdata.ValData{{Val: "10.30.0.0/24"}}
+	if checkLinkAcl(g, pl, matches, rules) {
+		t.Fatal("excluded route allowed")
+	}
+	g.ClientDns = []dbdata.ValData{{Val: "10.30.0.10"}}
+	binary.BigEndian.PutUint16(packet[22:24], 53)
+	if checkLinkAcl(g, pl, matches, rules) {
+		t.Fatal("DNS escaped excluded route")
+	}
+	g.RouteExclude = nil
+	binary.BigEndian.PutUint16(packet[22:24], 443)
+	g.NetworkPolicyIDs = []int{3, 1}
+	if checkLinkAcl(g, pl, map[int]bool{1: true, 3: true}, rules) {
+		t.Fatal("policy order ignored")
+	}
+	binary.BigEndian.PutUint16(packet[6:8], 1)
+	if checkLinkAcl(g, pl, matches, rules) {
+		t.Fatal("fragment bypass")
+	}
+}
+
+func TestNetworkPolicyDoesNotChangeRoutes(t *testing.T) {
+	group := &dbdata.Group{RouteInclude: []dbdata.ValData{{Val: "10.10.0.0/24"}}, RouteExclude: []dbdata.ValData{{Val: "10.10.0.20/32"}}}
+	packet := make([]byte, 40)
+	packet[0] = 0x45
+	packet[9] = byte(waterutil.TCP)
+	copy(packet[16:20], net.ParseIP("10.30.0.10").To4())
+	binary.BigEndian.PutUint16(packet[22:24], 443)
+	pl := &sessdata.Payload{LType: sessdata.LTypeIPData, Data: packet}
+	if !checkLinkAcl(group, pl, nil) {
+		t.Fatal("unconfigured group behavior changed")
+	}
+	group.NetworkPolicyIDs = []int{1}
+	rules := map[int][]dbdata.GroupLinkAcl{1: {{Action: dbdata.Allow, Protocol: dbdata.TCP, Val: "10.30.0.0/24", Port: "443"}}}
+	if err := dbdata.ValidateNetworkRules(rules[1]); err != nil {
+		t.Fatal(err)
+	}
+	if checkLinkAcl(group, pl, map[int]bool{1: true}, rules) {
+		t.Fatal("escaped group routes")
+	}
+	// 现有 applyUserPolicy 使用替换而不是合并；这里以替换后的最终路由检查。
+	group.RouteInclude = []dbdata.ValData{{Val: "10.30.0.0/24"}}
+	group.RouteExclude = []dbdata.ValData{{Val: "10.30.0.20/32"}}
+	if !checkLinkAcl(group, pl, map[int]bool{1: true}, rules) {
+		t.Fatal("final user routes ignored")
+	}
+	if group.RouteInclude[0].Val != "10.30.0.0/24" || group.RouteExclude[0].Val != "10.30.0.20/32" {
+		t.Fatal("ACL modified routes")
+	}
+	copy(packet[16:20], net.ParseIP("10.30.0.20").To4())
+	if checkLinkAcl(group, pl, map[int]bool{1: true}, rules) {
+		t.Fatal("user exclusion ignored")
+	}
+}

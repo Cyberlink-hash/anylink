@@ -6,6 +6,7 @@ import (
 )
 
 type Group struct {
+	NetworkPolicyIDs []int                  `json:"network_policy_ids" xorm:"Text"`
 	Id               int                    `json:"id" xorm:"pk autoincr not null"`
 	Name             string                 `json:"name" xorm:"varchar(60) not null unique"`
 	Note             string                 `json:"note" xorm:"varchar(255)"`

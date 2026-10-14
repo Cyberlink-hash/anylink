@@ -44,7 +44,7 @@ func TestNetworkPolicyLifecycle(t *testing.T) {
 	base.Cfg.DbSource = filepath.Join(t.TempDir(), "policy.db")
 	initDb()
 	defer func() { xdb.Close(); base.Cfg.DbType, base.Cfg.DbSource = oldType, oldSource }()
-	p := NetworkPolicy{Name: "leaders", Usernames: []string{" leader ", "leader"}, SourceIPs: []string{"203.0.113.0/24"}}
+	p := NetworkPolicy{Rules: []GroupLinkAcl{{Action: Allow, Protocol: TCP, Val: "10.0.0.0/8", Port: "443"}}, Name: "leaders", Usernames: []string{" leader ", "leader"}, SourceIPs: []string{"203.0.113.0/24"}}
 	if err := SetNetworkPolicy(&p); err != nil {
 		t.Fatal(err)
 	}
@@ -68,6 +68,14 @@ func TestNetworkPolicyLifecycle(t *testing.T) {
 			t.Fatal("shared policy not matched")
 		}
 	}
+	groups[0].NetworkPolicyIDs = []int{p.Id}
+	if err := SetGroup(groups[0]); err != nil {
+		t.Fatal(err)
+	}
+	matches, loaded := LoadNetworkPolicies(groups[0], "leader", "203.0.113.1:1234")
+	if !matches[p.Id] || len(loaded[p.Id]) != 1 {
+		t.Fatal("rules snapshot missing")
+	}
 	snapshot := MatchNetworkPolicies(groups[0], "leader", "203.0.113.1:1234")
 	p.Usernames = []string{"replacement"}
 	if err := SetNetworkPolicy(&p); err != nil {
@@ -80,6 +88,7 @@ func TestNetworkPolicyLifecycle(t *testing.T) {
 		t.Fatal("referenced policy deleted")
 	}
 	groups[0].LinkAcl = nil
+	groups[0].NetworkPolicyIDs = nil
 	if err := SetGroup(groups[0]); err != nil {
 		t.Fatal(err)
 	}
@@ -99,5 +108,27 @@ func TestNetworkPolicyLifecycle(t *testing.T) {
 	}
 	if MatchNetworkPolicies(groups[0], "leader", "203.0.113.1:1234") != nil {
 		t.Fatal("missing policy not detected")
+	}
+}
+
+func TestNetworkRulesValidation(t *testing.T) {
+	for _, port := range []string{"65535", "65534-65535", "80,443", "0"} {
+		rules := []GroupLinkAcl{{Action: Allow, Protocol: TCP, Val: "10.30.0.10", Port: port}}
+		if err := ValidateNetworkRules(rules); err != nil {
+			t.Fatal(err)
+		}
+		if rules[0].Val != "10.30.0.10/32" {
+			t.Fatal("single IP not normalized")
+		}
+	}
+	for _, rule := range []GroupLinkAcl{
+		{Action: Allow, Protocol: TCP, Val: "10.30.0.1/24", Port: "443"},
+		{Action: Allow, Protocol: TCP, Val: "10.30.0.0/24", Port: "65536"},
+		{Action: Allow, Protocol: TCP, Val: "10.30.0.0/24", Port: "100-90"},
+		{Action: "bad", Protocol: TCP, Val: "10.30.0.0/24", Port: "443"},
+	} {
+		if ValidateNetworkRules([]GroupLinkAcl{rule}) == nil {
+			t.Fatal("invalid rule accepted")
+		}
 	}
 }

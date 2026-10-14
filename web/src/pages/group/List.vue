@@ -415,8 +415,16 @@
             </el-form-item>
           </el-tab-pane>
           <el-tab-pane label="权限控制" name="link_acl">
+            <el-form-item label="网络策略">
+              <div>按关联顺序优先匹配，未命中时执行下方权限规则。放行范围受最终下发路由约束（启用的用户策略覆盖组路由），排除路由优先拒绝。</div>
+              <el-row v-for="(policyId,index) in ruleForm.network_policy_ids" :key="index">
+                <el-select v-model="ruleForm.network_policy_ids[index]" filterable placeholder="选择网络策略"><el-option v-for="policy in networkPolicies.filter(item => item.rules && item.rules.length)" :key="policy.id" :value="policy.id" :label="policy.name"></el-option></el-select>
+                <el-button type="text" :disabled="index === 0" @click="moveNetworkPolicy(index,-1)">上移</el-button><el-button type="text" :disabled="index === ruleForm.network_policy_ids.length-1" @click="moveNetworkPolicy(index,1)">下移</el-button><el-button type="text" @click="ruleForm.network_policy_ids.splice(index,1)">移除</el-button>
+              </el-row>
+              <el-button size="small" @click="ruleForm.network_policy_ids.push(null)">关联网络策略</el-button>
+            </el-form-item>
             <el-form-item label="权限控制" prop="link_acl">
-              <div class="msg-info">规则从上往下匹配；网络策略不满足则继续下一条。限制资源请配置兜底拒绝规则。修改后重连生效，组内 DNS 53 端口仍优先放行。</div>
+              <div class="msg-info">规则从上往下匹配；网络策略不满足则继续下一条。限制资源请配置兜底拒绝规则。修改后重连生效，DNS 53 端口仅在最终路由范围内优先放行。</div>
               <el-row class="msg-info">
                 <el-col :span="22">输入CIDR格式如: 192.168.3.0/24
                   协议支持 all,tcp,udp,icmp
@@ -463,7 +471,8 @@
                   <el-button size="mini" type="danger" icon="el-icon-minus" circle
                              @click.prevent="removeDomain(ruleForm.link_acl,index)"></el-button>
                 </el-col>
-                <el-col :span="23" :offset="1">
+                <el-col v-if="item.network_policy_id" :span="23" :offset="1">
+                  <span>旧版条件引用（仅保留兼容，可改用上方网络策略）</span>
                   <el-select v-model="item.network_policy_id" placeholder="无网络策略（不限制用户及来源）" style="width: 100%" filterable>
                     <el-option label="无网络策略（不限制用户及来源）" :value="0"></el-option>
                     <el-option v-for="policy in networkPolicies" :key="policy.id" :label="policy.name" :value="policy.id"></el-option>
@@ -585,6 +594,7 @@ export default {
         },
       },
       ruleForm: {
+        network_policy_ids: [],
         bandwidth: 0,
         bandwidth_format: '0',
         status: 1,
@@ -686,6 +696,10 @@ export default {
         console.log(error);
       });
     },
+    moveNetworkPolicy(index, offset) {
+      const id = this.ruleForm.network_policy_ids.splice(index,1)[0];
+      this.ruleForm.network_policy_ids.splice(index+offset,0,id);
+    },
     handleEdit(row) {
       axios.get('/network_policy/list').then(resp => {
         if (resp.data.code === 0) this.networkPolicies = resp.data.data.datas || [];
@@ -695,6 +709,7 @@ export default {
       console.log(row)
       this.user_edit_dialog = true
       if (!row) {
+        this.$set(this.ruleForm, 'network_policy_ids', []);
         this.setAuthData(row)
         return;
       }
@@ -705,6 +720,7 @@ export default {
       }).then(resp => {
         resp.data.data.bandwidth_format = this.convertBandwidth(resp.data.data.bandwidth, 'BYTE', 'Mbps').toString();
         this.ruleForm = resp.data.data;
+        this.$set(this.ruleForm, 'network_policy_ids', this.ruleForm.network_policy_ids || []);
         this.setAuthData(resp.data.data);
       }).catch(error => {
         this.$message.error('哦，请求出错');
@@ -729,6 +745,10 @@ export default {
         delete data.updated_at;
         data.bandwidth_format = this.convertBandwidth(data.bandwidth, 'BYTE', 'Mbps').toString();
         this.ruleForm = data;
+        this.$set(this.ruleForm, 'network_policy_ids', data.network_policy_ids || []);
+        axios.get('/network_policy/list').then(resp => {
+          if (resp.data.code === 0) this.networkPolicies = resp.data.data.datas || [];
+        }).catch(() => this.$message.error('网络策略加载失败'));
         this.setAuthData(data);
         this.activeTab = "general";
         this.user_edit_dialog = true;

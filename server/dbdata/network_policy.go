@@ -12,13 +12,14 @@ import (
 var networkPolicyMux sync.Mutex
 
 type NetworkPolicy struct {
-	Id        int       `json:"id" xorm:"pk autoincr not null"`
-	Name      string    `json:"name" xorm:"varchar(60) not null unique"`
-	Usernames []string  `json:"usernames" xorm:"Text"`
-	SourceIPs []string  `json:"source_ips" xorm:"Text"`
-	Note      string    `json:"note" xorm:"varchar(255)"`
-	CreatedAt time.Time `json:"created_at" xorm:"DateTime created"`
-	UpdatedAt time.Time `json:"updated_at" xorm:"DateTime updated"`
+	Rules     []GroupLinkAcl `json:"rules" xorm:"Text"`
+	Id        int            `json:"id" xorm:"pk autoincr not null"`
+	Name      string         `json:"name" xorm:"varchar(60) not null unique"`
+	Usernames []string       `json:"usernames" xorm:"Text"`
+	SourceIPs []string       `json:"source_ips" xorm:"Text"`
+	Note      string         `json:"note" xorm:"varchar(255)"`
+	CreatedAt time.Time      `json:"created_at" xorm:"DateTime created"`
+	UpdatedAt time.Time      `json:"updated_at" xorm:"DateTime updated"`
 }
 
 func normalizePolicyValues(values []string) []string {
@@ -53,6 +54,12 @@ func SetNetworkPolicy(p *NetworkPolicy) error {
 			}
 		}
 	}
+	if len(p.Rules) == 0 {
+		return errors.New("至少配置一条访问规则")
+	}
+	if err := ValidateNetworkRules(p.Rules); err != nil {
+		return err
+	}
 	if p.Id > 0 {
 		var old NetworkPolicy
 		if err := One("Id", p.Id, &old); err != nil {
@@ -78,6 +85,11 @@ func DeleteNetworkPolicy(id int) error {
 		return err
 	}
 	for _, group := range groups {
+		for _, policyID := range group.NetworkPolicyIDs {
+			if policyID == id {
+				return fmt.Errorf("网络策略被用户组 %s 引用，请先解除引用", group.Name)
+			}
+		}
 		for _, rule := range group.LinkAcl {
 			if rule.NetworkPolicyId == id {
 				return fmt.Errorf("网络策略被用户组 %s 引用，请先解除引用", group.Name)
@@ -128,21 +140,36 @@ func (p *NetworkPolicy) Matches(username, remoteAddr string) bool {
 
 // 每次建立隧道加载一次，在线连接保留原有匹配结果。
 func MatchNetworkPolicies(group *Group, username, remoteAddr string) map[int]bool {
+	matches, _ := LoadNetworkPolicies(group, username, remoteAddr)
+	return matches
+}
+
+func LoadNetworkPolicies(group *Group, username, remoteAddr string) (map[int]bool, map[int][]GroupLinkAcl) {
 	networkPolicyMux.Lock()
 	defer networkPolicyMux.Unlock()
-	result := map[int]bool{}
+	matches := map[int]bool{}
+	rules := map[int][]GroupLinkAcl{}
+	ids := append([]int{}, group.NetworkPolicyIDs...)
 	for _, rule := range group.LinkAcl {
-		if rule.NetworkPolicyId == 0 {
-			continue
+		if rule.NetworkPolicyId != 0 {
+			ids = append(ids, rule.NetworkPolicyId)
 		}
-		if _, ok := result[rule.NetworkPolicyId]; ok {
+	}
+	for _, id := range ids {
+		if _, exists := matches[id]; exists {
 			continue
 		}
 		var policy NetworkPolicy
-		if err := One("Id", rule.NetworkPolicyId, &policy); err != nil {
-			return nil
+		if err := One("Id", id, &policy); err != nil {
+			return nil, nil
 		}
-		result[rule.NetworkPolicyId] = policy.Matches(username, remoteAddr)
+		if len(policy.Rules) > 0 {
+			if err := ValidateNetworkRules(policy.Rules); err != nil {
+				return nil, nil
+			}
+		}
+		matches[id] = policy.Matches(username, remoteAddr)
+		rules[id] = policy.Rules
 	}
-	return result
+	return matches, rules
 }

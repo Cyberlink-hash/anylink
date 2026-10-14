@@ -137,6 +137,20 @@ func SetGroup(g *Group) error {
 		return errors.New("用户组名错误")
 	}
 
+	ids := map[int]bool{}
+	for _, id := range g.NetworkPolicyIDs {
+		if id < 1 || ids[id] {
+			return errors.New("网络策略无效或重复")
+		}
+		ids[id] = true
+		var policy NetworkPolicy
+		if err := One("Id", id, &policy); err != nil {
+			return errors.New("网络策略不存在或无法读取")
+		}
+		if len(policy.Rules) == 0 {
+			return errors.New("请先为网络策略配置访问规则")
+		}
+	}
 	// 判断数据
 	routeInclude := []ValData{}
 	for _, v := range g.RouteInclude {

@@ -80,6 +80,7 @@ func StartAdmin() {
 	r.HandleFunc("/user/policy/set", PolicySet)
 	r.HandleFunc("/user/policy/del", PolicyDel)
 
+	r.HandleFunc("/network_policy/users", NetworkPolicyUsers).Methods(http.MethodGet)
 	r.HandleFunc("/network_policy/list", NetworkPolicyList).Methods(http.MethodGet)
 	r.HandleFunc("/network_policy/detail", NetworkPolicyDetail).Methods(http.MethodGet)
 	r.HandleFunc("/network_policy/set", NetworkPolicySet).Methods(http.MethodPost)

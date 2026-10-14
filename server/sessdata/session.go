@@ -26,6 +26,7 @@ var (
 // 连接sess
 type ConnSession struct {
 	NetworkPolicies     map[int]bool
+	NetworkPolicyRules  map[int][]dbdata.GroupLinkAcl
 	Sess                *Session
 	MasterSecret        string // dtls协议的 master_secret
 	IpAddr              net.IP // 分配的ip地址
