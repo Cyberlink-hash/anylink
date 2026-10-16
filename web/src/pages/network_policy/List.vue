@@ -18,7 +18,21 @@
     <el-dialog title="网络策略" :visible.sync="dialog" width="950px" :close-on-click-modal="false">
       <el-form label-width="110px" @submit.native.prevent>
         <el-form-item label="名称" required><el-input v-model="form.name" maxlength="60"></el-input></el-form-item>
-        <el-form-item label="适用用户"><el-select v-model="form.usernames" multiple filterable remote :remote-method="searchUsers" :loading="usersLoading" placeholder="搜索用户名或姓名，可多选；留空不限制" style="width: 100%"><el-option v-for="user in userOptions" :key="user.username" :value="user.username" :label="user.nickname ? user.username + '（' + user.nickname + '）' : user.username"></el-option></el-select></el-form-item>
+        <el-form-item label="适用用户">
+          <el-select v-model="selectedGroups" multiple filterable clearable placeholder="按用户组筛选，可多选" style="width: 100%">
+            <el-option v-for="group in userGroups" :key="group" :value="group" :label="group"></el-option>
+          </el-select>
+          <el-input v-model="userQuery" clearable placeholder="搜索用户名或姓名" style="margin: 8px 0"></el-input>
+          <div>
+            <el-button size="small" :disabled="usersLoading || !filteredUsers.length" @click="selectFilteredUsers">全选当前筛选结果（{{ filteredUsers.length }}）</el-button>
+            <el-button size="small" :disabled="!form.usernames.length" @click="form.usernames = []">清空已选</el-button>
+            <span>已选 {{ form.usernames.length }} 人</span>
+          </div>
+          <el-select v-model="form.usernames" multiple collapse-tags :loading="usersLoading" placeholder="选择用户；留空不限制" style="width: 100%; margin-top: 8px">
+            <el-option v-for="user in selectableUsers" :key="user.username" :value="user.username" :label="user.nickname ? user.username + '（' + user.nickname + '）' : user.username" v-show="filteredUsers.some(item => item.username === user.username)"></el-option>
+          </el-select>
+          <div>按组筛选后可逐个选择成员，也可全选；多个组取并集，切换筛选保留已选用户。以后新增的用户需重新选择。清空名单表示不限制用户名。</div>
+        </el-form-item>
         <el-form-item label="连接来源 IP"><el-input type="textarea" :rows="4" v-model="sourceIPs" placeholder="服务端看到的 VPN 连接来源 IP 或 CIDR 网段，每行一个或逗号分隔；留空不限制"></el-input></el-form-item>
         <el-form-item label="访问规则" required>
           <div>第一条目标匹配的规则生效。来源不匹配会跳过本策略；限制来源时，请再关联一条不限制来源的拒绝策略兜底。</div>
@@ -45,7 +59,22 @@ import axios from 'axios'
 export default {
   name: 'NetworkPolicyList',
   data() {
-    return {tableData: [], dialog: false, saving: false, form: {usernames: [], rules: []}, sourceIPs: '', userOptions: [], usersLoading: false, userSearchID: 0}
+    return {tableData: [], dialog: false, saving: false, form: {usernames: [], rules: []}, sourceIPs: '', userOptions: [], usersLoading: false, userSearchID: 0, userQuery: '', selectedGroups: []}
+  },
+  computed: {
+    userGroups() {
+      return [...new Set(this.userOptions.flatMap(user => user.groups || []))].sort()
+    },
+    filteredUsers() {
+      const query = this.userQuery.trim().toLowerCase()
+      return this.userOptions.filter(user =>
+        (!this.selectedGroups.length || (user.groups || []).some(group => this.selectedGroups.includes(group))) &&
+        (!query || user.username.toLowerCase().includes(query) || (user.nickname || '').toLowerCase().includes(query)))
+    },
+    selectableUsers() {
+      const missing = this.form.usernames.filter(username => !this.userOptions.some(user => user.username === username))
+      return this.userOptions.concat(missing.map(username => ({username})))
+    },
   },
   created() {
     this.$emit('update:route_path', this.$route.path)
@@ -63,8 +92,10 @@ export default {
       this.form = row ? JSON.parse(JSON.stringify(row)) : {name: '', note: '', usernames: [], rules: []}
       this.$set(this.form, 'usernames', this.form.usernames || [])
       this.$set(this.form, 'rules', this.form.rules || [])
-      this.userOptions = this.form.usernames.map(username => ({username}))
-      this.searchUsers('')
+      this.userOptions = []
+      this.userQuery = ''
+      this.selectedGroups = []
+      this.searchUsers()
       this.sourceIPs = (this.form.source_ips || []).join('\n')
       this.dialog = true
     },
@@ -72,15 +103,16 @@ export default {
       const rule = this.form.rules.splice(index, 1)[0]
       this.form.rules.splice(index + offset, 0, rule)
     },
-    searchUsers(query) {
+    selectFilteredUsers() {
+      this.form.usernames = [...new Set(this.form.usernames.concat(this.filteredUsers.map(user => user.username)))]
+    },
+    searchUsers() {
       const id = ++this.userSearchID
       this.usersLoading = true
-      axios.get('/network_policy/users', {params: {q: query}}).then(resp => {
+      axios.get('/network_policy/users').then(resp => {
         if (id !== this.userSearchID) return
         if (resp.data.code !== 0) { this.$message.error(resp.data.msg); return }
-        const options = resp.data.data || []
-        const selected = this.userOptions.filter(user => this.form.usernames.includes(user.username))
-        this.userOptions = selected.concat(options.filter(user => !selected.some(item => item.username === user.username)))
+        this.userOptions = resp.data.data || []
       }).catch(() => this.$message.error('用户加载失败')).finally(() => { if (id === this.userSearchID) this.usersLoading = false })
     },
     values(text) {

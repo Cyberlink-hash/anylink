@@ -99,19 +99,20 @@ func NetworkPolicyDel(w http.ResponseWriter, r *http.Request) {
 
 func NetworkPolicyUsers(w http.ResponseWriter, r *http.Request) {
 	type option struct {
-		Username string `json:"username"`
-		Nickname string `json:"nickname"`
+		Username string   `json:"username"`
+		Nickname string   `json:"nickname"`
+		Groups   []string `json:"groups"`
 	}
 	var users []dbdata.User
 	query := "%" + r.URL.Query().Get("q") + "%"
-	err := dbdata.GetXdb().Cols("username", "nickname").Where("username LIKE ? OR nickname LIKE ?", query, query).Asc("username").Limit(50).Find(&users)
+	err := dbdata.GetXdb().Cols("username", "nickname", "groups").Where("username LIKE ? OR nickname LIKE ?", query, query).Asc("username").Find(&users)
 	if err != nil {
 		RespError(w, RespInternalErr, err)
 		return
 	}
 	values := []option{}
 	for _, user := range users {
-		values = append(values, option{user.Username, user.Nickname})
+		values = append(values, option{user.Username, user.Nickname, user.Groups})
 	}
 	RespSucess(w, values)
 }
