@@ -56,6 +56,9 @@ func OnlineSess() []Online {
  */
 func GetOnlineSess(search_cate string, search_text string, show_sleeper bool) []Online {
 	var datas Onlines
+	if search_cate == "username" {
+		search_text = strings.ToLower(search_text)
+	}
 	if strings.TrimSpace(search_text) == "" {
 		search_cate = ""
 	}
@@ -71,7 +74,7 @@ func GetOnlineSess(search_cate string, search_text string, show_sleeper bool) []
 		var compareText string
 		switch search_cate {
 		case "username":
-			compareText = v.Username
+			compareText = strings.ToLower(v.Username)
 		case "group":
 			compareText = v.Group
 		case "mac_addr":

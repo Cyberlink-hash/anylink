@@ -89,6 +89,13 @@ func (auth AuthLdap) checkUser(name, pwd string, g *Group, ext map[string]interf
 	if err != nil {
 		return fmt.Errorf("%s LDAP 登入失败，请检查登入的账号或密码 %s", name, err.Error())
 	}
+	username := strings.TrimSpace(LDAPValue(sr.Entries[0], auth.SearchAttr))
+	if username == "" {
+		return errors.New("LDAP用户名为空")
+	}
+	if ext != nil {
+		ext["ldap_username"] = username
+	}
 	return nil
 }
 
@@ -174,7 +181,7 @@ func (auth AuthLdap) searchLDAPUserMembership(l *ldap.Conn, name string) (*ldap.
 		auth.ObjectClass = "person"
 	}
 	filterAttr := "(objectClass=" + auth.ObjectClass + ")"
-	filterAttr += "(" + auth.SearchAttr + "=" + name + ")"
+	filterAttr += "(" + auth.SearchAttr + "=" + ldap.EscapeFilter(name) + ")"
 	userFilterAttr := filterAttr
 	if auth.MemberOf != "" {
 		filterAttr += "(memberOf:=" + auth.MemberOf + ")"

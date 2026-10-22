@@ -90,6 +90,6 @@ func TestCheckUser(t *testing.T) {
 	ast.Nil(err)
 	err = CheckUser("aaa", "bbbbbbb", group3, ext)
 	if ast.NotNil(err) {
-		ast.Equal("aaa LDAP服务器连接异常, 请检测服务器和端口", err.Error())
+		ast.Equal("同名用户不是LDAP用户，已跳过", err.Error())
 	}
 }

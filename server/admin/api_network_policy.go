@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/bjdgyc/anylink/dbdata"
 )
@@ -104,8 +105,8 @@ func NetworkPolicyUsers(w http.ResponseWriter, r *http.Request) {
 		Groups   []string `json:"groups"`
 	}
 	var users []dbdata.User
-	query := "%" + r.URL.Query().Get("q") + "%"
-	err := dbdata.GetXdb().Cols("username", "nickname", "groups").Where("username LIKE ? OR nickname LIKE ?", query, query).Asc("username").Find(&users)
+	query := "%" + strings.ToLower(r.URL.Query().Get("q")) + "%"
+	err := dbdata.GetXdb().Cols("username", "nickname", "groups").Where("LOWER(username) LIKE ? OR LOWER(nickname) LIKE ?", query, query).Asc("username").Find(&users)
 	if err != nil {
 		RespError(w, RespInternalErr, err)
 		return

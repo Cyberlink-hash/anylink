@@ -41,6 +41,10 @@ func initDb() {
 		base.Fatal(err)
 	}
 
+	if err := ensureUsernameConstraints(); err != nil {
+		base.Fatal(err)
+	}
+
 	// fmt.Println("s1=============", err)
 }
 

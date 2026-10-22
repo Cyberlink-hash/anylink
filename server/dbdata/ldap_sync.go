@@ -67,10 +67,28 @@ func LDAPUsers(g *Group) ([]*ldap.Entry, AuthLdap, error) {
 	return entries, auth, nil
 }
 
+// FindLDAPUser resolves one identity without choosing between case-variant duplicates.
+func FindLDAPUser(username string) (*User, error) {
+	var users []User
+	if err := xdb.Where("LOWER(TRIM(username)) = ?", normalizeUsername(username)).Limit(2).Find(&users); err != nil {
+		return nil, err
+	}
+	if len(users) == 0 {
+		return nil, ErrNotFound
+	}
+	if len(users) != 1 {
+		return nil, errors.New("存在大小写重复账户，请联系管理员处理")
+	}
+	if users[0].AuthType != "ldap" {
+		return nil, errors.New("同名用户不是LDAP用户，已跳过")
+	}
+	return &users[0], nil
+}
+
 func SyncLDAPEntry(entry *ldap.Entry, attr, group string) (*User, bool, error) {
 	userWriteMu.Lock()
 	defer userWriteMu.Unlock()
-	username := strings.TrimSpace(LDAPValue(entry, attr))
+	username := normalizeUsername(LDAPValue(entry, attr))
 	if username == "" {
 		return nil, false, errors.New("LDAP用户名为空")
 	}
@@ -82,8 +100,11 @@ func SyncLDAPEntry(entry *ldap.Entry, attr, group string) (*User, bool, error) {
 		nickname = username
 	}
 	email := strings.TrimSpace(LDAPValue(entry, "mail"))
+	existing, err := FindLDAPUser(username)
 	var user User
-	err := One("Username", username, &user)
+	if existing != nil {
+		user = *existing
+	}
 	if err != nil && !CheckErrNotFound(err) {
 		return nil, false, err
 	}

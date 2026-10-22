@@ -28,10 +28,41 @@ import (
 // 	UpdatedAt  time.Time `json:"updated_at"`
 // }
 
+func normalizeUsername(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
+}
+
+func validateUsername(v *User) error {
+	v.Username = normalizeUsername(v.Username)
+	if v.Username == "" {
+		return errors.New("用户名不能为空")
+	}
+	exists, err := xdb.Where("LOWER(TRIM(username)) = ? AND id <> ?", v.Username, v.Id).Exist(&User{})
+	if err != nil {
+		return err
+	}
+	if exists {
+		return errors.New("用户名已存在（不区分大小写）")
+	}
+	return nil
+}
+
+func InsertUser(v *User) error {
+	userWriteMu.Lock()
+	defer userWriteMu.Unlock()
+	if err := validateUsername(v); err != nil {
+		return err
+	}
+	return Add(v)
+}
+
 func SetUser(v *User) error {
 	userWriteMu.Lock()
 	defer userWriteMu.Unlock()
 	var err error
+	if err = validateUsername(v); err != nil {
+		return err
+	}
 	if v.Username == "" || len(v.Groups) == 0 {
 		return errors.New("用户名或组错误")
 	}
@@ -75,6 +106,7 @@ func SetUser(v *User) error {
 
 // 验证用户登录信息
 func CheckUser(name, pwd, group string, ext map[string]interface{}) error {
+	name = normalizeUsername(name)
 	base.Trace("CheckUser", name, pwd, group, ext)
 
 	// 获取登入的group数据
@@ -97,6 +129,34 @@ func CheckUser(name, pwd, group string, ext map[string]interface{}) error {
 	if !ok {
 		return fmt.Errorf("%s %s", "未知的认证方式: ", authType)
 	}
+	if authType == "ldap" {
+		if ext == nil {
+			ext = map[string]interface{}{}
+		}
+		user, err := FindLDAPUser(name)
+		if CheckErrNotFound(err) {
+			return errors.New("LDAP用户尚未开通，请联系管理员先同步用户并配置OTP")
+		}
+		if err != nil {
+			return err
+		}
+		if err := CheckUserEnabled(user.Username); err != nil {
+			return err
+		}
+		auth := makeInstance(authType).(IUserAuth)
+		if err := auth.checkUser(strings.ToLower(name), pwd, groupData, ext); err != nil {
+			return err
+		}
+		canonical, _ := ext["ldap_username"].(string)
+		if !strings.EqualFold(canonical, user.Username) {
+			return errors.New("LDAP用户名与本地账户不一致")
+		}
+		if err := SyncExternalUser(user.Username, group, authType); err != nil {
+			return err
+		}
+		ext["authenticated_username"] = user.Username
+		return CheckUserEnabled(user.Username)
+	}
 	auth := makeInstance(authType).(IUserAuth)
 	err = auth.checkUser(name, pwd, groupData, ext)
 	if err != nil {
@@ -109,6 +169,7 @@ func CheckUser(name, pwd, group string, ext map[string]interface{}) error {
 }
 
 func SyncExternalUser(name, group, authType string) error {
+	name = normalizeUsername(name)
 	userWriteMu.Lock()
 	defer userWriteMu.Unlock()
 	if name == "" || group == "" || authType == "" || authType == "local" {
@@ -119,6 +180,9 @@ func SyncExternalUser(name, group, authType string) error {
 	if err != nil {
 		if !CheckErrNotFound(err) {
 			return err
+		}
+		if authType == "ldap" {
+			return errors.New("LDAP用户尚未开通，请联系管理员先同步用户并配置OTP")
 		}
 		return Add(&User{
 			Username:   name,
@@ -316,6 +380,7 @@ func CheckOtp(name, otp, secret string) bool {
 
 // 插入数据库前加密密码
 func (u *User) BeforeInsert() {
+	u.Username = normalizeUsername(u.Username)
 	if base.Cfg.EncryptionPassword {
 		hashedPassword, err := utils.PasswordHash(u.PinCode)
 		if err != nil {
@@ -327,6 +392,7 @@ func (u *User) BeforeInsert() {
 
 // 更新数据库前加密密码
 func (u *User) BeforeUpdate() {
+	u.Username = normalizeUsername(u.Username)
 	if len(u.PinCode) != 60 && base.Cfg.EncryptionPassword {
 		hashedPassword, err := utils.PasswordHash(u.PinCode)
 		if err != nil {

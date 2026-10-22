@@ -13,8 +13,8 @@ func ListUsers(filter UserFilter, page, pageSize int) ([]User, int, error) {
 	session := xdb.NewSession()
 	defer session.Close()
 	if query := strings.TrimSpace(filter.Search); query != "" {
-		query = "%" + query + "%"
-		session.And("(username LIKE ? OR nickname LIKE ? OR email LIKE ?)", query, query, query)
+		query = "%" + strings.ToLower(query) + "%"
+		session.And("(LOWER(username) LIKE ? OR LOWER(nickname) LIKE ? OR LOWER(email) LIKE ?)", query, query, query)
 	}
 	if filter.AuthType != "" {
 		if filter.AuthType == "local" {

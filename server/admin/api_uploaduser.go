@@ -107,7 +107,7 @@ func UploadUser(file string) error {
 			// CreatedAt:  createdAt,
 			// UpdatedAt:  updatedAt,
 		}
-		if err := dbdata.AddBatch(user); err != nil {
+		if err := dbdata.InsertUser(user); err != nil {
 			return fmt.Errorf("请检查第%d行数据是否导入有重复用户", index)
 		}
 		user.PinCode = row[4]

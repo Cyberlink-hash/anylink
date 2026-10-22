@@ -84,8 +84,10 @@ func LinkAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	cr.Auth.Username = strings.ToLower(strings.TrimSpace(cr.Auth.Username))
+
 	// 锁定状态判断
-	if !lockManager.CheckLocked(cr.Auth.Username, r.RemoteAddr) {
+	if !lockManager.CheckLocked(strings.ToLower(cr.Auth.Username), r.RemoteAddr) {
 		w.WriteHeader(http.StatusTooManyRequests)
 		return
 	}
@@ -108,7 +110,7 @@ func LinkAuth(w http.ResponseWriter, r *http.Request) {
 	ext := map[string]interface{}{"mac_addr": cr.MacAddressList.MacAddress}
 	err = dbdata.CheckUser(cr.Auth.Username, cr.Auth.Password, cr.GroupSelect, ext)
 	if err != nil {
-		lockManager.UpdateLoginStatus(cr.Auth.Username, r.RemoteAddr, false) // 记录登录失败状态
+		lockManager.UpdateLoginStatus(strings.ToLower(cr.Auth.Username), r.RemoteAddr, false) // 记录登录失败状态
 
 		base.Warn(err, r.RemoteAddr)
 		ua.Info = err.Error()
@@ -123,6 +125,10 @@ func LinkAuth(w http.ResponseWriter, r *http.Request) {
 		tplRequest(tpl_request, w, data)
 		return
 	}
+	if username, ok := ext["authenticated_username"].(string); ok {
+		cr.Auth.Username = username
+		ua.Username = username
+	}
 	dbdata.UserActLogIns.Add(*ua, userAgent)
 
 	v := &dbdata.User{}
@@ -134,7 +140,7 @@ func LinkAuth(w http.ResponseWriter, r *http.Request) {
 	}
 	// 用户otp验证
 	if base.Cfg.AuthAloneOtp && !v.DisableOtp {
-		lockManager.UpdateLoginStatus(cr.Auth.Username, r.RemoteAddr, true) // 重置OTP验证计数
+		lockManager.UpdateLoginStatus(strings.ToLower(cr.Auth.Username), r.RemoteAddr, true) // 重置OTP验证计数
 
 		sessionID, err := GenerateSessionID()
 		if err != nil {

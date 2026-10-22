@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/bjdgyc/anylink/admin"
@@ -119,7 +120,7 @@ func CreateSession(w http.ResponseWriter, r *http.Request, authSession *AuthSess
 	cr := authSession.ClientRequest
 	ua := authSession.UserActLog
 
-	lockManager.UpdateLoginStatus(cr.Auth.Username, r.RemoteAddr, true) // 更新登录成功状态
+	lockManager.UpdateLoginStatus(strings.ToLower(cr.Auth.Username), r.RemoteAddr, true) // 更新登录成功状态
 
 	sess := sessdata.NewSession("")
 	sess.Username = cr.Auth.Username
@@ -202,7 +203,7 @@ func LinkAuth_otp(w http.ResponseWriter, r *http.Request) {
 	otp := cr.Auth.SecondaryPassword
 
 	// 锁定状态判断
-	if !lockManager.CheckLocked(username, r.RemoteAddr) {
+	if !lockManager.CheckLocked(strings.ToLower(username), r.RemoteAddr) {
 		w.WriteHeader(http.StatusTooManyRequests)
 		SessStore.DeleteAuthSession(sessionID)
 		return
@@ -210,7 +211,7 @@ func LinkAuth_otp(w http.ResponseWriter, r *http.Request) {
 
 	// 动态码错误
 	if !dbdata.CheckOtp(username, otp, otpSecret) {
-		lockManager.UpdateLoginStatus(username, r.RemoteAddr, false) // 记录登录失败状态
+		lockManager.UpdateLoginStatus(strings.ToLower(username), r.RemoteAddr, false) // 记录登录失败状态
 
 		base.Warn("OTP 动态码错误", username, r.RemoteAddr)
 		ua.Info = "OTP 动态码错误"
