@@ -25,11 +25,49 @@ func ensureUsernameConstraints() error {
 		}
 		seen[name] = user.Id
 	}
+	renamed := make(map[string]bool)
 	for _, user := range users {
-		if user.Username == "" || user.Username != normalizeUsername(user.Username) {
-			return fmt.Errorf("用户ID %d 的用户名不是规范小写，请先在旧版本手动清理为小写，再升级；未修改用户数据", user.Id)
+		name := normalizeUsername(user.Username)
+		if name == "" {
+			return fmt.Errorf("用户ID %d 的用户名为空，请手动处理；未修改用户数据", user.Id)
+		}
+		if name == user.Username {
+			continue
+		}
+		// 仅改用户名，避免 ORM 密码钩子或其他账户字段发生变化。
+		if _, err := sess.Exec(`UPDATE "user" SET username = ? WHERE id = ?`, name, user.Id); err != nil {
+			return err
+		}
+		for _, table := range []string{"policy", "ip_map"} {
+			if _, err := sess.Exec(`UPDATE "`+table+`" SET username = ? WHERE LOWER(TRIM(username)) = ?`, name, name); err != nil {
+				return fmt.Errorf("用户ID %d 的关联配置迁移失败，请检查重复用户策略；本次迁移已回滚: %w", user.Id, err)
+			}
+		}
+		renamed[name] = true
+	}
+	if len(renamed) > 0 {
+		var policies []NetworkPolicy
+		if err := sess.Find(&policies); err != nil {
+			return err
+		}
+		for _, policy := range policies {
+			changed := false
+			for i, username := range policy.Usernames {
+				name := normalizeUsername(username)
+				if renamed[name] && username != name {
+					policy.Usernames[i] = name
+					changed = true
+				}
+			}
+			if changed {
+				policy.Usernames = normalizePolicyValues(policy.Usernames)
+				if _, err := sess.ID(policy.Id).Cols("usernames").Update(&policy); err != nil {
+					return err
+				}
+			}
 		}
 	}
+
 	statements := []string{
 		`CREATE TRIGGER IF NOT EXISTS user_username_lower_insert BEFORE INSERT ON "user"
    WHEN NEW.username = '' OR NEW.username != LOWER(TRIM(NEW.username)) COLLATE BINARY

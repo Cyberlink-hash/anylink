@@ -98,12 +98,6 @@ func TestSQLiteUsernameUpgradeRejectsLegacyWithoutChangingData(t *testing.T) {
 	if _, err := xdb.Exec(`DELETE FROM "user" WHERE username = 'bob'`); err != nil {
 		t.Fatal(err)
 	}
-	if err := ensureUsernameConstraints(); err == nil {
-		t.Fatal("uppercase legacy data accepted")
-	}
-	if _, err := xdb.Exec(`UPDATE "user" SET username = 'bob'`); err != nil {
-		t.Fatal(err)
-	}
 	if err := ensureUsernameConstraints(); err != nil {
 		t.Fatal(err)
 	}
@@ -133,5 +127,94 @@ func TestConcurrentUsernameInsert(t *testing.T) {
 	}
 	if success != 1 || CountAll(&User{}) != 1 {
 		t.Fatalf("concurrent inserts: %d successful", success)
+	}
+}
+
+func TestSQLiteUsernameUpgradeMigratesReferences(t *testing.T) {
+	setupUserManageDB(t)
+	for _, sql := range []string{`DROP TRIGGER user_username_lower_insert`, `DROP TRIGGER user_username_lower_update`} {
+		if _, err := xdb.Exec(sql); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := xdb.Exec(`INSERT INTO "user" (id, username, auth_type, otp_secret, pin_code, disable_otp, status, groups) VALUES (9, 'Bob', 'ldap', 'KEEP-OTP', 'KEEP-PASSWORD', 0, 0, '["ops"]')`); err != nil {
+		t.Fatal(err)
+	}
+	policy := Policy{Username: "Bob", Status: 1, RouteInclude: []ValData{{Val: "10.30.0.0/24"}}}
+	ip := IpMap{Username: "Bob", IpAddr: "10.0.0.2", MacAddr: "00:01:02:03:04:05", Keep: true}
+	network := NetworkPolicy{Name: "test", Usernames: []string{"Bob", "bob", "alice"}}
+	audit := UserActLog{Username: "Bob"}
+	for _, value := range []interface{}{&policy, &ip, &network, &audit} {
+		if err := Add(value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 2; i++ {
+		if err := ensureUsernameConstraints(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var user User
+	if err := One("Id", 9, &user); err != nil {
+		t.Fatal(err)
+	}
+	if user.Username != "bob" || user.OtpSecret != "KEEP-OTP" || user.PinCode != "KEEP-PASSWORD" || user.Status != 0 || user.DisableOtp || len(user.Groups) != 1 || user.Groups[0] != "ops" {
+		t.Fatalf("account settings changed: %+v", user)
+	}
+	policy = Policy{Id: policy.Id}
+	if err := One("Id", policy.Id, &policy); err != nil {
+		t.Fatal(err)
+	}
+	if policy.Username != "bob" || policy.Status != 1 || policy.RouteInclude[0].Val != "10.30.0.0/24" {
+		t.Fatal("user route policy changed")
+	}
+	ip = IpMap{Id: ip.Id}
+	if err := One("Id", ip.Id, &ip); err != nil {
+		t.Fatal(err)
+	}
+	if ip.Username != "bob" || !ip.Keep || ip.IpAddr != "10.0.0.2" {
+		t.Fatal("IP mapping changed")
+	}
+	network = NetworkPolicy{Id: network.Id}
+	if err := One("Id", network.Id, &network); err != nil {
+		t.Fatal(err)
+	}
+	if len(network.Usernames) != 2 || network.Usernames[0] != "bob" || network.Usernames[1] != "alice" {
+		t.Fatalf("network references: %+v", network.Usernames)
+	}
+	audit = UserActLog{Id: audit.Id}
+	if err := One("Id", audit.Id, &audit); err != nil {
+		t.Fatal(err)
+	}
+	if audit.Username != "Bob" {
+		t.Fatal("historical audit was rewritten")
+	}
+	if err := xdb.Sync2(&User{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSQLiteUsernameUpgradeRollsBackPolicyConflict(t *testing.T) {
+	setupUserManageDB(t)
+	if _, err := xdb.Exec(`DROP TRIGGER user_username_lower_insert`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := xdb.Exec(`INSERT INTO "user" (username) VALUES ('Bob')`); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Bob", "bob"} {
+		if err := Add(&Policy{Username: name}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := ensureUsernameConstraints(); err == nil {
+		t.Fatal("policy collision accepted")
+	}
+	var users []User
+	if err := xdb.Find(&users); err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 1 || users[0].Username != "Bob" || CountAll(&Policy{}) != 2 {
+		t.Fatal("failed migration was not rolled back")
 	}
 }
