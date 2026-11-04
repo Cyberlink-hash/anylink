@@ -130,6 +130,9 @@ func CreateSession(w http.ResponseWriter, r *http.Request, authSession *AuthSess
 	sess.UserAgent = cr.UserAgent
 	sess.DeviceType = ua.DeviceType
 	sess.PlatformVersion = ua.PlatformVersion
+	sess.DeviceIdsCollected = ua.DeviceIdsCollected
+	sess.UniqueIdHash = ua.UniqueIdHash
+	sess.UniqueIdGlobalHash = ua.UniqueIdGlobalHash
 	sess.RemoteAddr = cr.RemoteAddr
 	// 获取客户端mac地址
 	sess.UniqueMac = true

@@ -1,6 +1,8 @@
 package dbdata
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net"
 	"net/url"
 	"regexp"
@@ -71,6 +73,20 @@ var (
 		},
 	}
 )
+
+func (u *UserActLog) SetDeviceIds(uniqueId, uniqueIdGlobal string) {
+	u.DeviceIdsCollected = true
+	u.UniqueIdHash = deviceIdHash(uniqueId)
+	u.UniqueIdGlobalHash = deviceIdHash(uniqueIdGlobal)
+}
+
+func deviceIdHash(value string) string {
+	if value == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
+}
 
 // 异步写入用户操作日志
 func (ua *UserActLogProcess) Add(u UserActLog, userAgent string) {

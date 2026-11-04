@@ -101,6 +101,7 @@ func LinkAuth(w http.ResponseWriter, r *http.Request) {
 		DeviceType:      cr.DeviceId.DeviceType,
 		PlatformVersion: cr.DeviceId.PlatformVersion,
 	}
+	ua.SetDeviceIds(cr.DeviceId.UniqueId, cr.DeviceId.UniqueIdGlobal)
 
 	sessionData := &AuthSession{
 		ClientRequest: cr,

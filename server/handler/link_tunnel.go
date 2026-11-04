@@ -237,13 +237,16 @@ func LinkTunnel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dbdata.UserActLogIns.Add(dbdata.UserActLog{
-		Username:        sess.Username,
-		GroupName:       sess.Group,
-		IpAddr:          cSess.IpAddr.String(),
-		RemoteAddr:      cSess.RemoteAddr,
-		DeviceType:      sess.DeviceType,
-		PlatformVersion: sess.PlatformVersion,
-		Status:          dbdata.UserConnected,
+		Username:           sess.Username,
+		GroupName:          sess.Group,
+		IpAddr:             cSess.IpAddr.String(),
+		RemoteAddr:         cSess.RemoteAddr,
+		DeviceType:         sess.DeviceType,
+		PlatformVersion:    sess.PlatformVersion,
+		DeviceIdsCollected: sess.DeviceIdsCollected,
+		UniqueIdHash:       sess.UniqueIdHash,
+		UniqueIdGlobalHash: sess.UniqueIdGlobalHash,
+		Status:             dbdata.UserConnected,
 	}, cSess.UserAgent)
 
 	go LinkCstp(conn, bufRW, cSess)

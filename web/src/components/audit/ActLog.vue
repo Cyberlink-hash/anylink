@@ -114,6 +114,20 @@
                     </div>
                 </template>             
         </el-table-column>         
+        <el-table-column label="设备标识（SHA-256）" min-width="300">
+            <template slot-scope="{ row }">
+                <div v-for="field in deviceIdFields" :key="field.key">
+                    <span>{{ field.label }}：</span>
+                    <span v-if="!row.device_ids_collected" class="sub_txt">未采集</span>
+                    <span v-else-if="!row[field.key]" class="sub_txt">缺失</span>
+                    <el-popover v-else placement="top" width="460" trigger="click">
+                        <div>{{ field.label }} · 完整 SHA-256 摘要</div>
+                        <div class="device-id-hash">{{ row[field.key] }}</div>
+                        <el-button slot="reference" type="text" size="mini">{{ row[field.key].slice(0, 16) }}…</el-button>
+                    </el-popover>
+                </div>
+            </template>
+        </el-table-column>
         <el-table-column
             prop="client"
             label="客户端"
@@ -170,6 +184,10 @@ export default {
       statusOps:[],
       osOps:[],
       clientOps:[],                  
+      deviceIdFields: [
+        {key: 'unique_id_hash', label: 'unique-id'},
+        {key: 'unique_id_global_hash', label: 'unique-id-global'},
+      ],
     }
   },
   watch: {
@@ -259,5 +277,10 @@ export default {
 }
 .sub_txt {
     color: #88909B;
+}
+.device-id-hash {
+    font-family: monospace;
+    word-break: break-all;
+    user-select: all;
 }
 </style>
