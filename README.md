@@ -85,6 +85,19 @@
 - 忽略 macOS 自动生成的 .DS_Store 文件，并移除当前版本中已跟踪的相关文件。
 - 将本地运维笔记加入忽略规则，避免作为项目文件提交。
 
+## 从源码构建
+
+在仓库目录执行 `bash build_web.sh && bash build.sh`。需要 Docker Desktop 或启用了 BuildKit 的 Docker Engine，构建默认使用本机架构。
+
+- Node 24、Go 1.26 和 Alpine 3.23 官方基础镜像已固定多架构 SHA-256 摘要；更新时应重新核实摘要并验证构建。
+- 前端在容器内使用冻结的 Yarn 锁文件安装依赖，禁止安装脚本，以普通用户离线编译，不挂载宿主机源码或复用本机 `node_modules`。Vue CLI 4 / webpack 4 暂时需要 OpenSSL legacy provider，仅在离线编译步骤启用；IPC 依赖固定到支持 Node 24 的 `9.2.10`。
+- 后端使用官方 Go 代理和校验数据库，下载前后校验 `go.mod` / `go.sum`，随后离线、只读模块编译。不会在发布构建中执行 `go mod tidy`，也不再使用 UPX 压缩或在宿主机执行产物。
+- 构建失败立即退出；成功后按本次镜像 ID 导出，不回退到旧镜像或上游镜像。本地镜像命名为 `local/anylink:<版本>`。普通构建不推送镜像，原有 `bash build_docker.sh cntest` 仍是显式发布测试镜像的命令。
+- 发布目录为 `anylink-deploy`，压缩包为 `anylink-deploy-<版本>.tar.gz`。发布包只带 `conf/server-sample.toml` 和客户端 profile 模板，不含实际 `server.toml`、证书私钥或数据库。首次部署需复制模板为 `server.toml`，设置独立的管理员密码、JWT 密钥、网络参数，并提供自己的 TLS 证书；升级现有服务时保留部署端配置和数据库。
+- 请在源码构建目录运行脚本，勿把正在运行的服务配置放在生成目录中；成功构建会替换旧生成目录。官方源不可达时构建会失败，不自动切换第三方源或关闭校验。
+
+构建流程回归测试：`python3 tests/build_scripts_test.py`。镜像摘要和依赖校验用于固定构建输入，不代表所有依赖已通过漏洞或恶意代码审计。
+
 ## 优化记录索引
 
 | 优化项 | 对应提交 |

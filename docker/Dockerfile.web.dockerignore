@@ -1,0 +1,14 @@
+**
+!web/
+!web/package.json
+!web/yarn.lock
+!web/babel.config.js
+!web/vue.config.js
+!web/src/
+!web/src/**
+!web/public/
+!web/public/**
+**/.env*
+**/*.key
+**/*.pem
+**/*.db

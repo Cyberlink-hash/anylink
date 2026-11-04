@@ -1,27 +1,29 @@
 #!/bin/bash
+set -euo pipefail
 
-action=$1
-
+cd "$(dirname "$0")"
+action=${1:-build}
+case "$action" in
+  build|cntest) ;;
+  *) echo "用法: $0 [build|cntest]" >&2; exit 1 ;;
+esac
 ver=$(cat version)
-echo $ver
+[[ "$ver" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] || { echo "无效的版本号" >&2; exit 1; }
+test -s web/ui/index.html || { echo "请先运行 bash build_web.sh" >&2; exit 1; }
+work_dir=$(mktemp -d "${TMPDIR:-/tmp}/anylink-image.XXXXXX")
+trap 'rm -rf "$work_dir"' EXIT
+commit_id=$(git rev-parse HEAD)
 
-# docker login -u bjdgyc
+docker build --pull --progress=plain --iidfile "$work_dir/image.id" \
+  --build-arg "appVer=$ver" --build-arg "commitId=$commit_id" \
+  -t "local/anylink:$ver" -f docker/Dockerfile .
+image_id=$(cat "$work_dir/image.id")
+if [[ -n "${ANYLINK_IID_FILE:-}" ]]; then
+  cp "$work_dir/image.id" "$ANYLINK_IID_FILE"
+fi
 
-# 生成时间 2024-01-30T21:41:27+08:00
-# date -Iseconds
-
-#bash ./build_web.sh
-
-# docker buildx build --platform linux/amd64,linux/arm64,linux/arm/v7 本地不生成镜像
-docker build -t bjdgyc/anylink:latest --no-cache --progress=plain \
-  --build-arg CN="yes" --build-arg appVer=$ver --build-arg commitId=$(git rev-parse HEAD) \
-  -f docker/Dockerfile .
-
-echo "docker tag latest $ver"
-docker tag bjdgyc/anylink:latest bjdgyc/anylink:$ver
-
-if [[ $action == "cntest" ]]; then
-  docker tag bjdgyc/anylink:$ver registry.cn-hangzhou.aliyuncs.com/bjdgyc/anylink:test-$ver
-  docker push registry.cn-hangzhou.aliyuncs.com/bjdgyc/anylink:test-$ver
-  echo registry.cn-hangzhou.aliyuncs.com/bjdgyc/anylink:test-$ver
+if [[ "$action" == "cntest" ]]; then
+  target="registry.cn-hangzhou.aliyuncs.com/bjdgyc/anylink:test-$ver"
+  docker tag "$image_id" "$target"
+  docker push "$target"
 fi
