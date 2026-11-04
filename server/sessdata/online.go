@@ -36,7 +36,15 @@ func (o Onlines) Len() int {
 }
 
 func (o Onlines) Less(i, j int) bool {
-	return bytes.Compare(o[i].Ip, o[j].Ip) < 0
+	usernameI := strings.ToLower(o[i].Username)
+	usernameJ := strings.ToLower(o[j].Username)
+	if usernameI != usernameJ {
+		return usernameI < usernameJ
+	}
+	if cmp := bytes.Compare(o[i].Ip, o[j].Ip); cmp != 0 {
+		return cmp < 0
+	}
+	return o[i].Token < o[j].Token
 }
 
 func (o Onlines) Swap(i, j int) {
