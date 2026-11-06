@@ -137,6 +137,15 @@ func SetGroup(g *Group) error {
 		return errors.New("用户组名错误")
 	}
 
+	if g.Id > 0 && g.OriginalNetworkPolicyIDs != nil {
+		var current Group
+		if err := One("Id", g.Id, &current); err != nil {
+			return err
+		}
+		if !samePolicyOrder(current.NetworkPolicyIDs, *g.OriginalNetworkPolicyIDs) {
+			return errors.New("用户组的网络策略关联或顺序已变更，请重新打开后编辑")
+		}
+	}
 	ids := map[int]bool{}
 	for _, id := range g.NetworkPolicyIDs {
 		if id < 1 || ids[id] {

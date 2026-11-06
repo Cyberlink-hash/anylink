@@ -12,14 +12,17 @@ import (
 var networkPolicyMux sync.Mutex
 
 type NetworkPolicy struct {
-	Rules     []GroupLinkAcl `json:"rules" xorm:"Text"`
-	Id        int            `json:"id" xorm:"pk autoincr not null"`
-	Name      string         `json:"name" xorm:"varchar(60) not null unique"`
-	Usernames []string       `json:"usernames" xorm:"Text"`
-	SourceIPs []string       `json:"source_ips" xorm:"Text"`
-	Note      string         `json:"note" xorm:"varchar(255)"`
-	CreatedAt time.Time      `json:"created_at" xorm:"DateTime created"`
-	UpdatedAt time.Time      `json:"updated_at" xorm:"DateTime updated"`
+	GroupIds         *[]int               `json:"group_ids,omitempty" xorm:"-"`
+	OriginalGroupIds *[]int               `json:"original_group_ids,omitempty" xorm:"-"`
+	Groups           []NetworkPolicyGroup `json:"groups" xorm:"-"`
+	Rules            []GroupLinkAcl       `json:"rules" xorm:"Text"`
+	Id               int                  `json:"id" xorm:"pk autoincr not null"`
+	Name             string               `json:"name" xorm:"varchar(60) not null unique"`
+	Usernames        []string             `json:"usernames" xorm:"Text"`
+	SourceIPs        []string             `json:"source_ips" xorm:"Text"`
+	Note             string               `json:"note" xorm:"varchar(255)"`
+	CreatedAt        time.Time            `json:"created_at" xorm:"DateTime created"`
+	UpdatedAt        time.Time            `json:"updated_at" xorm:"DateTime updated"`
 }
 
 func normalizePolicyValues(values []string) []string {
@@ -68,10 +71,7 @@ func SetNetworkPolicy(p *NetworkPolicy) error {
 		p.CreatedAt = old.CreatedAt
 	}
 	p.UpdatedAt = time.Now()
-	if p.Id > 0 {
-		return Set(p)
-	}
-	return Add(p)
+	return saveNetworkPolicyGroups(p)
 }
 
 func DeleteNetworkPolicy(id int) error {

@@ -416,12 +416,12 @@
           </el-tab-pane>
           <el-tab-pane label="权限控制" name="link_acl">
             <el-form-item label="网络策略">
-              <div>按关联顺序优先匹配，未命中时执行下方权限规则。放行范围受最终下发路由约束（启用的用户策略覆盖组路由），排除路由优先拒绝。</div>
+              <div>关联或解除请在“网络策略组”页面操作，此处仅调整执行顺序。按顺序优先匹配，未命中时执行下方权限规则；放行范围受最终路由约束，排除路由优先拒绝。</div>
               <el-row v-for="(policyId,index) in ruleForm.network_policy_ids" :key="index">
-                <el-select v-model="ruleForm.network_policy_ids[index]" filterable placeholder="选择网络策略"><el-option v-for="policy in networkPolicies.filter(item => item.rules && item.rules.length)" :key="policy.id" :value="policy.id" :label="policy.name"></el-option></el-select>
-                <el-button type="text" :disabled="index === 0" @click="moveNetworkPolicy(index,-1)">上移</el-button><el-button type="text" :disabled="index === ruleForm.network_policy_ids.length-1" @click="moveNetworkPolicy(index,1)">下移</el-button><el-button type="text" @click="ruleForm.network_policy_ids.splice(index,1)">移除</el-button>
+                <span>{{ index + 1 }}. {{ (networkPolicies.find(policy => policy.id === policyId) || {}).name || ('#' + policyId) }}</span>
+                <el-button type="text" :disabled="index === 0" @click="moveNetworkPolicy(index,-1)">上移</el-button><el-button type="text" :disabled="index === ruleForm.network_policy_ids.length-1" @click="moveNetworkPolicy(index,1)">下移</el-button>
               </el-row>
-              <el-button size="small" @click="ruleForm.network_policy_ids.push(null)">关联网络策略</el-button>
+              <div v-if="!ruleForm.network_policy_ids.length">暂无直接关联，请在保存用户组后到网络策略组页面选择。</div>
             </el-form-item>
             <el-form-item label="权限控制" prop="link_acl">
               <div class="msg-info">规则从上往下匹配；网络策略不满足则继续下一条。限制资源请配置兜底拒绝规则。修改后重连生效，DNS 53 端口仅在最终路由范围内优先放行。</div>
@@ -710,6 +710,7 @@ export default {
       this.user_edit_dialog = true
       if (!row) {
         this.$set(this.ruleForm, 'network_policy_ids', []);
+        this.$set(this.ruleForm, 'original_network_policy_ids', []);
         this.setAuthData(row)
         return;
       }
@@ -721,6 +722,7 @@ export default {
         resp.data.data.bandwidth_format = this.convertBandwidth(resp.data.data.bandwidth, 'BYTE', 'Mbps').toString();
         this.ruleForm = resp.data.data;
         this.$set(this.ruleForm, 'network_policy_ids', this.ruleForm.network_policy_ids || []);
+        this.$set(this.ruleForm, 'original_network_policy_ids', this.ruleForm.network_policy_ids.slice());
         this.setAuthData(resp.data.data);
       }).catch(error => {
         this.$message.error('哦，请求出错');

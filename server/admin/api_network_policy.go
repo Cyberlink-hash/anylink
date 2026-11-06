@@ -29,6 +29,11 @@ func NetworkPolicyList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := dbdata.FillNetworkPolicyGroups(datas); err != nil {
+		RespError(w, RespInternalErr, err)
+		return
+	}
+
 	data := map[string]interface{}{
 		"count":     count,
 		"page_size": pageSize,
@@ -54,7 +59,12 @@ func NetworkPolicyDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespSucess(w, data)
+	policies := []dbdata.NetworkPolicy{data}
+	if err := dbdata.FillNetworkPolicyGroups(policies); err != nil {
+		RespError(w, RespInternalErr, err)
+		return
+	}
+	RespSucess(w, policies[0])
 }
 
 func NetworkPolicySet(w http.ResponseWriter, r *http.Request) {
