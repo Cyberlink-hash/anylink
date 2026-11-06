@@ -8,7 +8,7 @@
         <div v-for="group in row.groups" :key="group.id">{{ group.name }}<span v-if="group.order">（顺序 {{ group.order }}）</span><el-tag v-if="group.legacy" size="mini" type="warning">旧版条件引用</el-tag></div>
         <span v-if="!row.groups || !row.groups.length">未关联</span>
       </template></el-table-column>
-      <el-table-column label="用户名"><template slot-scope="scope">{{ scope.row.usernames.join('、') || '不限制' }}</template></el-table-column>
+      <el-table-column label="适用用户"><template slot-scope="{ row }"><template v-if="row.user_mode === 'group_members'">关联组全部成员（动态）<div>排除：{{ (row.excluded_usernames || []).join('、') || '无' }}</div></template><template v-else>旧版：{{ (row.usernames || []).join('、') || '不限制用户名' }}</template></template></el-table-column>
       <el-table-column label="连接来源 IP"><template slot-scope="scope">{{ scope.row.source_ips.join('、') || '不限制' }}</template></el-table-column>
       <el-table-column label="访问规则"><template slot-scope="scope"><div v-for="(rule,index) in scope.row.rules" :key="index">{{ rule.action === 'allow' ? '允许' : '拒绝' }} {{ rule.val }} {{ rule.protocol }} / {{ rule.port }}</div><span v-if="!scope.row.rules || !scope.row.rules.length">旧版条件策略，请补充访问规则</span></template></el-table-column>
       <el-table-column prop="note" label="备注"></el-table-column>
@@ -28,10 +28,25 @@
           <el-select v-model="form.group_ids" multiple filterable :loading="groupsLoading" :disabled="groupsLoading" placeholder="选择实际登录用户组；留空不直接关联任何组" style="width:100%">
             <el-option v-for="group in groupOptions" :key="group.id" :value="group.id" :label="group.name" v-show="!groupQuery || group.name.toLowerCase().includes(groupQuery.trim().toLowerCase()) || form.group_ids.includes(group.id)"></el-option>
           </el-select>
-          <div>此处控制策略在哪些登录组生效，与下方按组筛选用户不同。新关联追加到组内网络策略末尾；已有顺序不变，顺序可在用户组权限控制中调整。以后新建的组不会自动关联。</div>
+          <div>选择关联组后，下方自动显示成员并集，跨组重合用户只显示一次。新关联追加到组内网络策略末尾；已有顺序不变，顺序可在用户组权限控制中调整。以后新建的组不会自动关联。</div>
           <el-alert v-if="legacyGroups.length" type="warning" :closable="false" :title="'旧版条件引用：' + legacyGroups.map(g => g.name).join('、') + '。取消直接关联不会删除这些组内的权限规则；需要解除时请在对应组的权限控制中处理。'"></el-alert>
         </el-form-item>
-        <el-form-item label="适用用户">
+        <el-form-item v-if="form.user_mode === 'group_members'" label="适用用户">
+          <div>已纳入 {{ selectedMemberCount }} / {{ memberUsers.length }} 人（按组成员并集去重）。新增或同步进组的用户自动纳入；取消勾选后加入排除名单。</div>
+          <el-input v-model="userQuery" clearable placeholder="搜索用户名或姓名，不改变勾选状态" style="margin:8px 0"></el-input>
+          <el-button size="small" :disabled="usersLoading || !filteredMembers.length" @click="setFilteredMembers(true)">勾选当前筛选结果</el-button>
+          <el-button size="small" :disabled="usersLoading || !filteredMembers.length" @click="setFilteredMembers(false)">取消当前筛选结果</el-button>
+          <el-table :data="filteredMembers" v-loading="usersLoading" max-height="330" border style="margin-top:8px" empty-text="所选组暂无匹配成员">
+            <el-table-column label="适用" width="65"><template slot-scope="{ row }"><el-checkbox :value="!form.excluded_usernames.includes(row.username)" @change="toggleMember(row.username, $event)"></el-checkbox></template></el-table-column>
+            <el-table-column prop="username" label="用户名"></el-table-column><el-table-column prop="nickname" label="姓名"></el-table-column>
+            <el-table-column label="所属关联组"><template slot-scope="{ row }">{{ (row.groups || []).filter(name => effectiveGroupNames.includes(name)).join('、') }}</template></el-table-column>
+          </el-table>
+          <div>排除名单（{{ form.excluded_usernames.length }} 人）：<span v-if="!form.excluded_usernames.length">无</span><el-tag v-for="name in form.excluded_usernames" :key="name" closable @close="toggleMember(name, true)" style="margin:4px">{{ name }}{{ memberUsers.some(u => u.username === name) ? '' : '（当前不在关联组）' }}</el-tag></div>
+          <div>取消勾选只让该用户跳过本策略，后续策略仍会匹配。排除名单不会因移组或重复选组被清空；重新勾选或移除排除标签可恢复。若存在旧版条件引用，对应组成员也计入并集。变更在重连后生效。</div>
+        </el-form-item>
+        <el-form-item v-else label="旧版适用用户">
+          <el-alert title="旧策略保留原有固定用户名限制。转换为组成员模式后，后续新增成员会自动生效。" type="warning" :closable="false"></el-alert>
+          <el-button type="primary" size="small" @click="convertMembers" :disabled="usersLoading || !usersReady || !groupsReady">使用关联组成员</el-button>
           <el-select v-model="selectedGroups" multiple filterable clearable placeholder="按成员所属组筛选用户（不代表关联策略）" style="width: 100%">
             <el-option v-for="group in userGroups" :key="group" :value="group" :label="group"></el-option>
           </el-select>
@@ -59,9 +74,9 @@
           <el-button size="small" @click="form.rules.push({action: 'allow', val: '', protocol: 'tcp', port: '443'})">添加规则</el-button>
         </el-form-item>
         <el-form-item label="备注"><el-input v-model="form.note" maxlength="255"></el-input></el-form-item>
-        <el-form-item><span>用户名和来源 IP 至少填写一项。在上方选择关联登录组，多个网络策略按组内顺序执行。</span></el-form-item>
+        <el-form-item><span v-if="form.user_mode === 'group_members'">来源 IP 留空表示不限制来源。组内成员默认全选，仅保存取消勾选的排除名单；没有任何关联或引用时策略不生效。</span><span v-else>旧版模式仍要求用户名和来源 IP 至少填写一项。</span></el-form-item>
       </el-form>
-      <span slot="footer"><el-button @click="dialog = false" :disabled="saving">取消</el-button><el-button type="primary" :loading="saving" :disabled="groupsLoading || !groupsReady" @click="save">保存</el-button></span>
+      <span slot="footer"><el-button @click="dialog = false" :disabled="saving">取消</el-button><el-button type="primary" :loading="saving" :disabled="groupsLoading || !groupsReady || usersLoading || !usersReady" @click="save">保存</el-button></span>
     </el-dialog>
   </div>
 </template>
@@ -72,9 +87,25 @@ import axios from 'axios'
 export default {
   name: 'NetworkPolicyList',
   data() {
-    return {tableData: [], dialog: false, saving: false, form: {usernames: [], rules: [], group_ids: []}, sourceIPs: '', userOptions: [], usersLoading: false, userSearchID: 0, userQuery: '', selectedGroups: [], groupOptions: [], groupQuery: '', groupsLoading: false, groupsReady: false}
+    return {tableData: [], dialog: false, saving: false, form: {usernames: [], rules: [], group_ids: [], user_mode: 'group_members', excluded_usernames: []}, sourceIPs: '', userOptions: [], usersLoading: false, usersReady: false, userSearchID: 0, userQuery: '', selectedGroups: [], groupOptions: [], groupQuery: '', groupsLoading: false, groupsReady: false}
   },
   computed: {
+    effectiveGroupNames() {
+      const ids = new Set((this.form.group_ids || []).concat(this.legacyGroups.map(g => g.id)))
+      return this.groupOptions.filter(g => ids.has(g.id)).map(g => g.name)
+    },
+    memberUsers() {
+      const seen = new Set()
+      return this.userOptions.filter(user => {
+        if (seen.has(user.username) || !(user.groups || []).some(g => this.effectiveGroupNames.includes(g))) return false
+        seen.add(user.username); return true
+      })
+    },
+    selectedMemberCount() { return this.memberUsers.filter(u => !this.form.excluded_usernames.includes(u.username)).length },
+    filteredMembers() {
+      const query = this.userQuery.trim().toLowerCase()
+      return this.memberUsers.filter(u => !query || u.username.toLowerCase().includes(query) || (u.nickname || '').toLowerCase().includes(query))
+    },
     filteredGroups() {
       const query = this.groupQuery.trim().toLowerCase()
       return this.groupOptions.filter(group => !query || group.name.toLowerCase().includes(query))
@@ -100,6 +131,22 @@ export default {
     this.getData()
   },
   methods: {
+    toggleMember(username, checked) {
+      if (checked) this.form.excluded_usernames = this.form.excluded_usernames.filter(name => name !== username)
+      else this.form.excluded_usernames = [...new Set(this.form.excluded_usernames.concat(username))]
+    },
+    setFilteredMembers(checked) {
+      const names = new Set(this.filteredMembers.map(u => u.username))
+      this.form.excluded_usernames = checked ? this.form.excluded_usernames.filter(name => !names.has(name)) : [...new Set(this.form.excluded_usernames.concat([...names]))]
+    },
+    convertMembers() {
+      this.$confirm('转换后，当前组成员中未在原用户名名单内的用户会先列入排除名单；以后新增或同步进组的成员默认纳入。原来源 IP 条件保持，保存前请核对勾选。', '转换用户适用方式').then(() => {
+        const old = this.form.usernames || []
+        this.form.excluded_usernames = old.length ? this.memberUsers.filter(u => !old.includes(u.username)).map(u => u.username) : []
+        this.form.usernames = []
+        this.$set(this.form, 'user_mode', 'group_members')
+      }).catch(() => {})
+    },
     getData() {
       axios.get('/network_policy/list').then(resp => {
         if (resp.data.code === 0) this.tableData = resp.data.data.datas || []
@@ -108,7 +155,7 @@ export default {
     },
     async edit(row) {
       try {
-        let data = {name: '', note: '', usernames: [], rules: [], group_ids: [], groups: []}
+        let data = {name: '', note: '', usernames: [], rules: [], group_ids: [], groups: [], user_mode: 'group_members', excluded_usernames: []}
         if (row) {
           const response = await axios.get('/network_policy/detail', {params: {id: row.id}})
           if (response.data.code !== 0) throw new Error(response.data.msg)
@@ -117,6 +164,7 @@ export default {
         this.form = data
         this.$set(this.form, 'usernames', this.form.usernames || [])
         this.$set(this.form, 'rules', this.form.rules || [])
+        this.$set(this.form, 'excluded_usernames', this.form.excluded_usernames || [])
         this.$set(this.form, 'group_ids', this.form.group_ids || [])
         this.$set(this.form, 'original_group_ids', this.form.group_ids.slice())
         this.userOptions = []; this.userQuery = ''; this.selectedGroups = []; this.groupQuery = ''
@@ -147,26 +195,27 @@ export default {
     },
     searchUsers() {
       const id = ++this.userSearchID
-      this.usersLoading = true
+      this.usersLoading = true; this.usersReady = false
       axios.get('/network_policy/users').then(resp => {
         if (id !== this.userSearchID) return
         if (resp.data.code !== 0) { this.$message.error(resp.data.msg); return }
-        this.userOptions = resp.data.data || []
+        this.userOptions = resp.data.data || []; this.usersReady = true
       }).catch(() => this.$message.error('用户加载失败')).finally(() => { if (id === this.userSearchID) this.usersLoading = false })
     },
     values(text) {
       return text.split(/[\n,，]+/).map(value => value.trim()).filter(Boolean)
     },
     async save() {
-      if (this.saving || this.groupsLoading || !this.groupsReady) return
+      if (this.saving || this.groupsLoading || !this.groupsReady || this.usersLoading || !this.usersReady) return
       const data = Object.assign({}, this.form, {source_ips: this.values(this.sourceIPs)})
-      if (!data.name.trim() || !data.rules.length || (!data.usernames.length && !data.source_ips.length)) {
-        this.$message.error('请填写名称、访问规则，以及用户名或来源 IP')
+      if (!data.name.trim() || !data.rules.length || (data.user_mode !== 'group_members' && !data.usernames.length && !data.source_ips.length)) {
+        this.$message.error('请填写名称、访问规则；旧版模式还需填写用户名或来源 IP')
         return
       }
       const added = data.group_ids.filter(id => !data.original_group_ids.includes(id))
       const removed = data.original_group_ids.filter(id => !data.group_ids.includes(id))
       try {
+        if (data.user_mode === 'group_members' && this.memberUsers.length && !this.selectedMemberCount) await this.$confirm('当前组内所有成员都被排除，会跳过本策略；以后新增成员仍会自动纳入。确认保存？', '当前适用人数为零')
         if (added.length || removed.length) await this.$confirm('新增关联：' + this.groupNames(added) + '；解除直接关联：' + this.groupNames(removed) + '。已有顺序保持，新关联追加到末尾，重连后生效。', '确认关联变更')
       } catch (_) { return }
       this.saving = true

@@ -7,22 +7,28 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/bjdgyc/anylink/pkg/utils"
 )
 
 var networkPolicyMux sync.Mutex
 
+const NetworkPolicyGroupMembers = "group_members"
+
 type NetworkPolicy struct {
-	GroupIds         *[]int               `json:"group_ids,omitempty" xorm:"-"`
-	OriginalGroupIds *[]int               `json:"original_group_ids,omitempty" xorm:"-"`
-	Groups           []NetworkPolicyGroup `json:"groups" xorm:"-"`
-	Rules            []GroupLinkAcl       `json:"rules" xorm:"Text"`
-	Id               int                  `json:"id" xorm:"pk autoincr not null"`
-	Name             string               `json:"name" xorm:"varchar(60) not null unique"`
-	Usernames        []string             `json:"usernames" xorm:"Text"`
-	SourceIPs        []string             `json:"source_ips" xorm:"Text"`
-	Note             string               `json:"note" xorm:"varchar(255)"`
-	CreatedAt        time.Time            `json:"created_at" xorm:"DateTime created"`
-	UpdatedAt        time.Time            `json:"updated_at" xorm:"DateTime updated"`
+	UserMode          string               `json:"user_mode" xorm:"varchar(24) not null default ''"`
+	ExcludedUsernames []string             `json:"excluded_usernames" xorm:"Text"`
+	GroupIds          *[]int               `json:"group_ids,omitempty" xorm:"-"`
+	OriginalGroupIds  *[]int               `json:"original_group_ids,omitempty" xorm:"-"`
+	Groups            []NetworkPolicyGroup `json:"groups" xorm:"-"`
+	Rules             []GroupLinkAcl       `json:"rules" xorm:"Text"`
+	Id                int                  `json:"id" xorm:"pk autoincr not null"`
+	Name              string               `json:"name" xorm:"varchar(60) not null unique"`
+	Usernames         []string             `json:"usernames" xorm:"Text"`
+	SourceIPs         []string             `json:"source_ips" xorm:"Text"`
+	Note              string               `json:"note" xorm:"varchar(255)"`
+	CreatedAt         time.Time            `json:"created_at" xorm:"DateTime created"`
+	UpdatedAt         time.Time            `json:"updated_at" xorm:"DateTime updated"`
 }
 
 func normalizePolicyValues(values []string) []string {
@@ -47,8 +53,25 @@ func SetNetworkPolicy(p *NetworkPolicy) error {
 	}
 	p.Usernames = normalizePolicyValues(p.Usernames)
 	p.SourceIPs = normalizePolicyValues(p.SourceIPs)
-	if len(p.Usernames) == 0 && len(p.SourceIPs) == 0 {
-		return errors.New("用户名和来源IP至少填写一项")
+	switch p.UserMode {
+	case "":
+		if len(p.Usernames) == 0 && len(p.SourceIPs) == 0 {
+			return errors.New("用户名和来源IP至少填写一项")
+		}
+		if len(p.ExcludedUsernames) > 0 {
+			return errors.New("旧版用户选择不支持排除名单，请先转换为组成员模式")
+		}
+	case NetworkPolicyGroupMembers:
+		if len(p.Usernames) > 0 {
+			return errors.New("组成员模式仅保存排除名单，不接受固定用户名名单")
+		}
+		names := make([]string, 0, len(p.ExcludedUsernames))
+		for _, name := range p.ExcludedUsernames {
+			names = append(names, normalizeUsername(name))
+		}
+		p.ExcludedUsernames = normalizePolicyValues(names)
+	default:
+		return errors.New("用户适用模式错误")
 	}
 	for _, value := range p.SourceIPs {
 		if net.ParseIP(value) == nil {
@@ -67,6 +90,9 @@ func SetNetworkPolicy(p *NetworkPolicy) error {
 		var old NetworkPolicy
 		if err := One("Id", p.Id, &old); err != nil {
 			return err
+		}
+		if old.UserMode == NetworkPolicyGroupMembers && p.UserMode != NetworkPolicyGroupMembers {
+			return errors.New("组成员策略不能通过旧版表单保存，请刷新页面")
 		}
 		p.CreatedAt = old.CreatedAt
 	}
@@ -99,11 +125,22 @@ func DeleteNetworkPolicy(id int) error {
 	return Del(&NetworkPolicy{Id: id})
 }
 
-func (p *NetworkPolicy) Matches(username, remoteAddr string) bool {
-	if len(p.Usernames) == 0 && len(p.SourceIPs) == 0 {
+// Group-member mode requires membership verified by the session loader.
+func (p *NetworkPolicy) Matches(username, remoteAddr string, groupMember ...bool) bool {
+	if p.UserMode == NetworkPolicyGroupMembers {
+		if len(groupMember) == 0 || !groupMember[0] {
+			return false
+		}
+		if utils.InArrStr(p.ExcludedUsernames, normalizeUsername(username)) {
+			return false
+		}
+	} else if p.UserMode != "" {
 		return false
 	}
-	if len(p.Usernames) > 0 {
+	if p.UserMode == "" && len(p.Usernames) == 0 && len(p.SourceIPs) == 0 {
+		return false
+	}
+	if p.UserMode == "" && len(p.Usernames) > 0 {
 		found := false
 		for _, name := range p.Usernames {
 			if name == username {
@@ -168,7 +205,15 @@ func LoadNetworkPolicies(group *Group, username, remoteAddr string) (map[int]boo
 				return nil, nil
 			}
 		}
-		matches[id] = policy.Matches(username, remoteAddr)
+		member := false
+		if policy.UserMode == NetworkPolicyGroupMembers {
+			var user User
+			if err := One("Username", normalizeUsername(username), &user); err != nil {
+				return nil, nil
+			}
+			member = utils.InArrStr(user.Groups, group.Name)
+		}
+		matches[id] = policy.Matches(username, remoteAddr, member)
 		rules[id] = policy.Rules
 	}
 	return matches, rules
