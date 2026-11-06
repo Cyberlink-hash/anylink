@@ -79,6 +79,7 @@ func StartAdmin() {
 	r.HandleFunc("/user/ip_map/detail", UserIpMapDetail)
 	r.HandleFunc("/user/ip_map/set", UserIpMapSet)
 	r.HandleFunc("/user/ip_map/del", UserIpMapDel)
+	r.HandleFunc("/user/policy/preview", PolicyPreview).Methods(http.MethodPost)
 	r.HandleFunc("/user/policy/list", PolicyList)
 	r.HandleFunc("/user/policy/detail", PolicyDetail)
 	r.HandleFunc("/user/policy/set", PolicySet)

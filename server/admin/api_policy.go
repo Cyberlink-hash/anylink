@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/bjdgyc/anylink/dbdata"
 )
@@ -19,10 +20,21 @@ func PolicyList(w http.ResponseWriter, r *http.Request) {
 
 	var pageSize = dbdata.PageSize
 
-	count := dbdata.CountAll(&dbdata.Policy{})
-
+	session := dbdata.GetXdb().NewSession()
+	defer session.Close()
+	if search := strings.TrimSpace(r.FormValue("search")); search != "" {
+		session.And("LOWER(username) LIKE ?", "%"+strings.ToLower(search)+"%")
+	}
+	if scope := r.FormValue("group_id"); scope != "" {
+		id, err := strconv.Atoi(scope)
+		if err != nil || id < 0 {
+			RespError(w, RespParamErr, "用户组筛选错误")
+			return
+		}
+		session.And("group_id = ?", id)
+	}
 	var datas []dbdata.Policy
-	err := dbdata.Find(&datas, pageSize, page)
+	count, err := session.Desc("id").Limit(pageSize, (page-1)*pageSize).FindAndCount(&datas)
 	if err != nil {
 		RespError(w, RespInternalErr, err)
 		return
@@ -96,4 +108,24 @@ func PolicyDel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	RespSucess(w, nil)
+}
+
+func PolicyPreview(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Username string         `json:"username"`
+		GroupId  int            `json:"group_id"`
+		Policy   *dbdata.Policy `json:"policy"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 256*1024)
+	defer r.Body.Close()
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		RespError(w, RespParamErr, "预览参数错误")
+		return
+	}
+	result, err := dbdata.PreviewPolicy(input.Username, input.GroupId, input.Policy)
+	if err != nil {
+		RespError(w, RespParamErr, err)
+		return
+	}
+	RespSucess(w, result)
 }

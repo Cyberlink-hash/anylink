@@ -35,7 +35,7 @@
 
       <el-menu-item index="/admin/user/list">用户列表</el-menu-item>
       <el-menu-item index="/admin/user/device-reviews">设备审批 <el-badge :value="pendingDevices" :max="99" :hidden="pendingDevices === 0" /></el-menu-item>
-      <el-menu-item index="/admin/user/policy">用户策略</el-menu-item>
+      <el-menu-item index="/admin/user/policy">用户连接策略</el-menu-item>
       <el-menu-item index="/admin/user/online">在线用户</el-menu-item>
       <el-menu-item index="/admin/user/lockmanager">锁定管理</el-menu-item>
       <el-menu-item index="/admin/user/ip_map">IP映射</el-menu-item>

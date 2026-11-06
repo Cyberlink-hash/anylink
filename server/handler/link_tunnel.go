@@ -144,7 +144,12 @@ func LinkTunnel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 设置用户策略
-	SetUserPolicy(cSess.Username, cSess.Group)
+	if err := SetUserPolicy(cSess.Username, cSess.Group); err != nil {
+		base.Error("resolve user policy", err)
+		cSess.Close()
+		http.Error(w, "用户策略读取失败，请稍后重试", http.StatusServiceUnavailable)
+		return
+	}
 
 	// 允许本地LAN访问vpn网络，必须放在路由的第一个
 	if cSess.Group.AllowLan {
@@ -300,24 +305,18 @@ func SetPostAuthXml(g *dbdata.Group, w http.ResponseWriter) error {
 }
 
 // 设置用户策略, 覆盖Group的属性值
-func SetUserPolicy(username string, g *dbdata.Group) {
-	userPolicy := dbdata.GetPolicy(username)
-	dbdata.CompatPolicyDns(userPolicy)
-	if userPolicy.Id != 0 && userPolicy.Status == 1 {
-		base.Debug(username + " use UserPolicy")
-		applyUserPolicy(g, userPolicy)
+func SetUserPolicy(username string, g *dbdata.Group) error {
+	p, err := dbdata.ResolveUserPolicy(username, g.Id)
+	if err != nil {
+		return err
 	}
+	dbdata.ApplyUserPolicy(g, p)
+	if p != nil && p.ConfigVersion == 1 {
+		return dbdata.ValidateEffectivePolicy(g)
+	}
+	return nil
 }
 
-func applyUserPolicy(g *dbdata.Group, userPolicy *dbdata.Policy) {
-	g.AllowLan = userPolicy.AllowLan
-	g.ClientDns = userPolicy.ClientDns
-	if userPolicy.NoGlobalDns || len(userPolicy.SplitDns) > 0 {
-		g.NoGlobalDns = userPolicy.NoGlobalDns
-		g.SplitDns = userPolicy.SplitDns
-	}
-	g.RouteInclude = userPolicy.RouteInclude
-	g.RouteExclude = userPolicy.RouteExclude
-	g.DsExcludeDomains = userPolicy.DsExcludeDomains
-	g.DsIncludeDomains = userPolicy.DsIncludeDomains
+func applyUserPolicy(g *dbdata.Group, p *dbdata.Policy) {
+	dbdata.ApplyUserPolicy(g, p)
 }

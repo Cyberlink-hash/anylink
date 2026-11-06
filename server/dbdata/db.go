@@ -41,6 +41,10 @@ func initDb() {
 		base.Fatal(err)
 	}
 
+	if err := migratePolicyScope(); err != nil {
+		base.Fatal(err)
+	}
+
 	if err := ensureUsernameConstraints(); err != nil {
 		base.Fatal(err)
 	}

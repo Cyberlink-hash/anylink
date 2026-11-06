@@ -10,14 +10,14 @@ import (
 
 func GetPolicy(Username string) *Policy {
 	policyData := &Policy{}
-	err := One("Username", Username, policyData)
+	_, err := xdb.Where("username = ? AND group_id = ?", Username, 0).Get(policyData)
 	if err != nil {
 		return policyData
 	}
 	return policyData
 }
 
-func SetPolicy(p *Policy) error {
+func normalizePolicy(p *Policy) error {
 	var err error
 	if p.Username == "" {
 		return errors.New("用户名错误")
@@ -77,7 +77,7 @@ func SetPolicy(p *Policy) error {
 			clientDns = append(clientDns, v)
 		}
 	}
-	if len(routeInclude) == 0 || (len(routeInclude) == 1 && routeInclude[0].Val == "all") {
+	if p.ConfigVersion == 0 && (len(routeInclude) == 0 || (len(routeInclude) == 1 && routeInclude[0].Val == "all")) {
 		if len(clientDns) == 0 {
 			return errors.New("默认路由，必须设置一个DNS")
 		}
@@ -108,12 +108,31 @@ func SetPolicy(p *Policy) error {
 		return errors.New("排除域名有误：" + err.Error())
 	}
 
+	return nil
+}
+
+func SetPolicy(p *Policy) error {
+	policyMu.Lock()
+	defer policyMu.Unlock()
+	if err := preparePolicy(p); err != nil {
+		return err
+	}
+	var existing Policy
+	found, err := xdb.Where("LOWER(username) = ? AND group_id = ? AND id <> ?", normalizeUsername(p.Username), p.GroupId, p.Id).Get(&existing)
+	if err != nil {
+		return err
+	}
+	if found {
+		return errors.New("该用户在此范围已有策略，请编辑已有策略")
+	}
+	if p.ConfigVersion == 1 {
+		if err := validatePolicyGroups(p); err != nil {
+			return err
+		}
+	}
 	p.UpdatedAt = time.Now()
 	if p.Id > 0 {
-		err = Set(p)
-	} else {
-		err = Add(p)
+		return Set(p)
 	}
-
-	return err
+	return Add(p)
 }

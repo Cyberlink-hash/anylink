@@ -87,8 +87,14 @@ type AccessAudit struct {
 }
 
 type Policy struct {
+	GroupId          int       `json:"group_id" xorm:"not null default 0 unique(user_group)"`
+	ConfigVersion    int       `json:"config_version" xorm:"not null default 0"`
+	LanMode          string    `json:"lan_mode" xorm:"varchar(16) not null default ''"`
+	DnsMode          string    `json:"dns_mode" xorm:"varchar(16) not null default ''"`
+	RouteMode        string    `json:"route_mode" xorm:"varchar(16) not null default ''"`
+	DomainMode       string    `json:"domain_mode" xorm:"varchar(16) not null default ''"`
 	Id               int       `json:"id" xorm:"pk autoincr not null"`
-	Username         string    `json:"username" xorm:"varchar(60) not null unique"`
+	Username         string    `json:"username" xorm:"varchar(60) not null unique(user_group)"`
 	AllowLan         bool      `json:"allow_lan" xorm:"Bool"`
 	NoGlobalDns      bool      `json:"no_global_dns" xorm:"Bool"`
 	ClientDns        []ValData `json:"client_dns" xorm:"Text"`
