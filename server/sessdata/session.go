@@ -69,6 +69,7 @@ type DtlsSession struct {
 }
 
 type Session struct {
+	UserId             int
 	mux                sync.RWMutex
 	Sid                string // auth返回的 session-id
 	Token              string // session信息的唯一token

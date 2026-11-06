@@ -27,11 +27,14 @@ type Group struct {
 }
 
 type User struct {
-	Id       int    `json:"id" xorm:"pk autoincr not null"`
-	Username string `json:"username" xorm:"varchar(60) not null unique"`
-	AuthType string `json:"auth_type" xorm:"varchar(20) not null default 'local'"`
-	Nickname string `json:"nickname" xorm:"varchar(255)"`
-	Email    string `json:"email" xorm:"varchar(255)"`
+	DeviceBindingEnabled bool   `json:"device_binding_enabled" xorm:"-"`
+	PendingDevices       int    `json:"pending_devices" xorm:"-"`
+	ApprovedDevices      int    `json:"approved_devices" xorm:"-"`
+	Id                   int    `json:"id" xorm:"pk autoincr not null"`
+	Username             string `json:"username" xorm:"varchar(60) not null unique"`
+	AuthType             string `json:"auth_type" xorm:"varchar(20) not null default 'local'"`
+	Nickname             string `json:"nickname" xorm:"varchar(255)"`
+	Email                string `json:"email" xorm:"varchar(255)"`
 	// Password  string    `json:"password"`
 	PinCode    string     `json:"pin_code" xorm:"varchar(64)"`
 	LimitTime  *time.Time `json:"limittime,omitempty" xorm:"Datetime limittime"` // 值为null时，前端不显示

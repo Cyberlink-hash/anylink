@@ -12,7 +12,14 @@ import (
 
 func LinkDtls(conn net.Conn, cSess *sessdata.ConnSession) {
 	base.Debug("LinkDtls connect ip:", cSess.IpAddr, "user:", cSess.Username, "udp-rip:", conn.RemoteAddr())
+	sessdata.DeviceAccessMu.Lock()
+	if !cSess.IsCurrent() || cSess.Sess.CheckDeviceAccess() != nil || dbdata.CheckUserEnabled(cSess.Username) != nil {
+		sessdata.DeviceAccessMu.Unlock()
+		_ = conn.Close()
+		return
+	}
 	dSess := cSess.NewDtlsConn()
+	sessdata.DeviceAccessMu.Unlock()
 	if dSess == nil {
 		// 创建失败，直接关闭链接
 		_ = conn.Close()

@@ -1,5 +1,6 @@
 <template>
   <div>
+    <user-devices v-if="deviceUser" :user="deviceUser" :visible="true" @close="deviceUser = null" @changed="getData(page)"></user-devices>
     <el-card>
       <el-form :inline="true" @submit.native.prevent="handleSearch">
         <el-form-item>
@@ -39,6 +40,7 @@
         <el-form-item label="类型"><el-select v-model="filters.auth_type" clearable size="small" placeholder="全部" @change="handleSearch"><el-option v-for="type in ['local', 'ldap', 'radius']" :key="type" :label="type" :value="type"></el-option></el-select></el-form-item>
         <el-form-item label="状态"><el-select v-model="filters.status" clearable size="small" placeholder="全部" @change="handleSearch"><el-option label="启用" value="1"></el-option><el-option label="停用" value="0"></el-option><el-option label="过期" value="2"></el-option></el-select></el-form-item>
         <el-form-item label="OTP"><el-select v-model="filters.otp" clearable size="small" placeholder="全部" @change="handleSearch"><el-option label="已开启" value="enabled"></el-option><el-option label="未开启" value="disabled"></el-option></el-select></el-form-item>
+        <el-form-item label="设备绑定"><el-select v-model="filters.device_binding" clearable size="small" placeholder="全部" @change="handleSearch"><el-option label="已开启" value="enabled"></el-option><el-option label="未开启" value="disabled"></el-option></el-select></el-form-item>
       </el-form>
 
       <div class="user-actions">
@@ -94,8 +96,16 @@
         <el-table-column prop="updated_at" label="更新时间" :formatter="tableDateFormat">
         </el-table-column>
 
-        <el-table-column label="操作" width="210">
+        <el-table-column label="设备绑定" width="130">
+          <template slot-scope="{ row }">
+            <el-tag size="small" :type="row.device_binding_enabled ? 'success' : 'info'">{{ row.device_binding_enabled ? '已开启' : '未开启' }}</el-tag>
+            <div v-if="row.pending_devices" style="color: #E6A23C">待审批 {{ row.pending_devices }} 台</div>
+            <div>已批准 {{ row.approved_devices || 0 }} 台</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="290">
           <template slot-scope="scope">
+            <el-button size="mini" @click="deviceUser = scope.row">设备管理</el-button>
             <el-button size="mini" type="primary" @click="handleEdit(scope.row)">编辑
             </el-button>
 
@@ -218,10 +228,11 @@
 
 <script>
 import axios from "axios";
+import UserDevices from "./Devices.vue";
 
 export default {
   name: "List",
-  components: {},
+  components: { UserDevices },
   mixins: [],
   created() {
     this.$emit('update:route_path', this.$route.path)
@@ -234,6 +245,7 @@ export default {
 
   data() {
     return {
+      deviceUser: null,
       page: 1,
       loading: false,
       requestID: 0,
@@ -241,7 +253,7 @@ export default {
       batchAction: '',
       batchLoading: false,
       batchActions: [{value: 'enable', label: '启用'}, {value: 'disable', label: '停用'}, {value: 'otp_enable', label: '开启 OTP'}, {value: 'otp_disable', label: '关闭 OTP'}, {value: 'delete', label: '删除'}],
-      filters: {group: '', auth_type: '', status: '', otp: ''},
+      filters: {group: '', auth_type: '', status: '', otp: '', device_binding: ''},
       syncDialog: false,
       syncLoading: false,
       syncGroupIDs: [],
@@ -473,7 +485,7 @@ export default {
     },
     reset() {
       this.searchData = "";
-      this.filters = {group: '', auth_type: '', status: '', otp: ''};
+      this.filters = {group: '', auth_type: '', status: '', otp: '', device_binding: ''};
       this.handleSearch();
     },
   },

@@ -53,6 +53,21 @@ func LinkTunnel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	sessdata.DeviceAccessMu.Lock()
+	deviceLocked := true
+	defer func() {
+		if deviceLocked {
+			sessdata.DeviceAccessMu.Unlock()
+		}
+	}()
+	if sessdata.Token2Sess(sess.Token) != sess {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	if err := sess.CheckDeviceAccess(); err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
 	if err := dbdata.CheckUserEnabled(sess.Username); err != nil {
 		w.WriteHeader(http.StatusForbidden)
 		return
@@ -207,6 +222,8 @@ func LinkTunnel(w http.ResponseWriter, r *http.Request) {
 		SetPostAuthXml(cSess.Group, w)
 	}
 
+	deviceLocked = false
+	sessdata.DeviceAccessMu.Unlock()
 	w.WriteHeader(http.StatusOK)
 
 	hClone := w.Header().Clone()
@@ -219,6 +236,14 @@ func LinkTunnel(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		base.Error(err)
 		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	// Revocation may have happened while the HTTP connection was being hijacked.
+	sessdata.DeviceAccessMu.Lock()
+	deviceLocked = true
+	if !cSess.IsCurrent() {
+		_ = conn.Close()
 		return
 	}
 

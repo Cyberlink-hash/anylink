@@ -38,10 +38,15 @@ func UserList(w http.ResponseWriter, r *http.Request) {
 		err      error
 	)
 
-	params := dbdata.UserFilter{Search: prefix, Group: r.FormValue("group"), AuthType: r.FormValue("auth_type"), Status: r.FormValue("status"), OTP: r.FormValue("otp")}
+	params := dbdata.UserFilter{Search: prefix, Group: r.FormValue("group"), AuthType: r.FormValue("auth_type"), Status: r.FormValue("status"), OTP: r.FormValue("otp"), DeviceBinding: r.FormValue("device_binding")}
 	datas, count, err = dbdata.ListUsers(params, page, pageSize)
 
 	if err != nil && !dbdata.CheckErrNotFound(err) {
+		RespError(w, RespInternalErr, err)
+		return
+	}
+
+	if err := dbdata.FillDeviceSummaries(datas); err != nil {
 		RespError(w, RespInternalErr, err)
 		return
 	}

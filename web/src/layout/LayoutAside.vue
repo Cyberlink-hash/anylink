@@ -34,6 +34,7 @@
       </template>
 
       <el-menu-item index="/admin/user/list">用户列表</el-menu-item>
+      <el-menu-item index="/admin/user/device-reviews">设备审批 <el-badge :value="pendingDevices" :max="99" :hidden="pendingDevices === 0" /></el-menu-item>
       <el-menu-item index="/admin/user/policy">用户策略</el-menu-item>
       <el-menu-item index="/admin/user/online">在线用户</el-menu-item>
       <el-menu-item index="/admin/user/lockmanager">锁定管理</el-menu-item>
@@ -70,13 +71,33 @@
 </template>
 
 <script>
+import axios from "axios";
 export default {
   name: "LayoutAside",
   data() {
-    return {}
+    return { pendingDevices: 0, pendingLoading: false, pendingTimer: null }
   },
   props: ['is_active', 'route_path'],
   mounted() {
+    this.refreshPending();
+    this.pendingTimer = window.setInterval(this.refreshPending, 60000);
+    window.addEventListener('user-devices-changed', this.refreshPending);
+  },
+  beforeDestroy() {
+    window.clearInterval(this.pendingTimer);
+    window.removeEventListener('user-devices-changed', this.refreshPending);
+  },
+  watch: { route_path() { this.refreshPending(); } },
+  methods: {
+    async refreshPending() {
+      if (this.pendingLoading) { return; }
+      this.pendingLoading = true;
+      try {
+        const { data } = await axios.get('/user/device-pending-count');
+        if (data.code === 0) { this.pendingDevices = data.data.count; }
+      } catch (_) { /* Keep the last known count on temporary request failures. */ }
+      finally { this.pendingLoading = false; }
+    },
   }
 }
 </script>

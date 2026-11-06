@@ -18,6 +18,8 @@ const (
 	UserAuthFail       = 0 // 认证失败
 	UserAuthSuccess    = 1 // 认证成功
 	UserConnected      = 2 // 连线成功
+	UserDeviceDenied   = 4
+	UserLogoutDevice   = 8
 	UserLogout         = 3 // 用户登出
 	UserLogoutLose     = 0 // 用户掉线
 	UserLogoutBanner   = 1 // 用户banner弹窗取消
@@ -42,10 +44,11 @@ var (
 	UserActLogIns = &UserActLogProcess{
 		Pool: grpool.NewPool(1, 100),
 		StatusOps: []string{ // 操作类型
-			UserAuthFail:    "认证失败",
-			UserAuthSuccess: "认证成功",
-			UserConnected:   "连接成功",
-			UserLogout:      "用户登出",
+			UserAuthFail:     "认证失败",
+			UserAuthSuccess:  "认证成功",
+			UserConnected:    "连接成功",
+			UserLogout:       "用户登出",
+			UserDeviceDenied: "设备准入失败",
 		},
 		OsOps: []string{ // 操作系统
 			0: "Unknown",
@@ -70,6 +73,7 @@ var (
 			UserLogoutExpire:   "账号过期被踢下线",
 			UserIdleTimeout:    "用户空闲链接超时",
 			UserLogoutOneAdmin: "账号被管理员一键下线",
+			UserLogoutDevice:   "设备授权变更，连接已关闭",
 		},
 	}
 )
@@ -138,6 +142,8 @@ func (ua *UserActLogProcess) GetStatusOpsWithTag() interface{} {
 			tag = "danger"
 		case UserAuthSuccess:
 			tag = "success"
+		case UserDeviceDenied:
+			tag = "warning"
 		case UserConnected:
 			tag = ""
 		}

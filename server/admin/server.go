@@ -59,6 +59,10 @@ func StartAdmin() {
 	r.HandleFunc("/set/other/getcertset", GetCertSetting)
 	r.HandleFunc("/set/other/customcert", CustomCert)
 
+	r.HandleFunc("/user/device-reviews", DeviceReviews).Methods(http.MethodGet)
+	r.HandleFunc("/user/device-pending-count", DevicePendingCount).Methods(http.MethodGet)
+	r.HandleFunc("/user/devices", UserDevices).Methods(http.MethodGet)
+	r.HandleFunc("/user/devices/change", UserDevicesChange).Methods(http.MethodPost)
 	r.HandleFunc("/user/list", UserList)
 	r.HandleFunc("/user/batch", UserBatch).Methods(http.MethodPost)
 	r.HandleFunc("/user/ldap/groups", LDAPSyncGroups).Methods(http.MethodGet)

@@ -3,6 +3,7 @@ package handler
 import (
 	"crypto/md5"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -112,6 +113,8 @@ func DeleteCookie(w http.ResponseWriter, name string) {
 	http.SetCookie(w, cookie)
 }
 func CreateSession(w http.ResponseWriter, r *http.Request, authSession *AuthSession) {
+	sessdata.DeviceAccessMu.Lock()
+	defer sessdata.DeviceAccessMu.Unlock()
 	if err := dbdata.CheckUserEnabled(authSession.ClientRequest.Auth.Username); err != nil {
 		http.Error(w, "用户已停用或过期，请重新登录", http.StatusForbidden)
 		return
@@ -120,9 +123,31 @@ func CreateSession(w http.ResponseWriter, r *http.Request, authSession *AuthSess
 	cr := authSession.ClientRequest
 	ua := authSession.UserActLog
 
+	userID, err := dbdata.RegisterLoginDevice(cr.Auth.Username, dbdata.DeviceIdentity{
+		UniqueIdHash: ua.UniqueIdHash, UniqueIdGlobalHash: ua.UniqueIdGlobalHash,
+		DeviceType: ua.DeviceType, PlatformVersion: ua.PlatformVersion,
+		UserAgent: cr.UserAgent, RemoteAddr: cr.RemoteAddr,
+	})
+	if err != nil {
+		message := "设备授权检查失败，请稍后重试"
+		var denied *dbdata.DeviceDeniedError
+		if errors.As(err, &denied) {
+			message = denied.Message
+		} else {
+			base.Error("device admission", err)
+		}
+		ua.Status = dbdata.UserDeviceDenied
+		ua.Info = message
+		dbdata.UserActLogIns.Add(*ua, cr.UserAgent)
+		w.WriteHeader(http.StatusOK)
+		tplRequest(tpl_request, w, RequestData{Group: cr.GroupSelect, Groups: dbdata.GetGroupNamesNormal(), Error: message})
+		return
+	}
+
 	lockManager.UpdateLoginStatus(strings.ToLower(cr.Auth.Username), r.RemoteAddr, true) // 更新登录成功状态
 
 	sess := sessdata.NewSession("")
+	sess.UserId = userID
 	sess.Username = cr.Auth.Username
 	sess.Group = cr.GroupSelect
 	oriMac := cr.MacAddressList.MacAddress

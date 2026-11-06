@@ -7,7 +7,7 @@ import (
 	"github.com/bjdgyc/anylink/pkg/utils"
 )
 
-type UserFilter struct{ Search, Group, AuthType, Status, OTP string }
+type UserFilter struct{ Search, Group, AuthType, Status, OTP, DeviceBinding string }
 
 func ListUsers(filter UserFilter, page, pageSize int) ([]User, int, error) {
 	session := xdb.NewSession()
@@ -38,6 +38,15 @@ func ListUsers(filter UserFilter, page, pageSize int) ([]User, int, error) {
 		session.And("disable_otp = ?", true)
 	default:
 		return nil, 0, errors.New("OTP筛选错误")
+	}
+	switch filter.DeviceBinding {
+	case "":
+	case "enabled":
+		session.And("id IN (SELECT user_id FROM device_policy WHERE enabled = ?)", true)
+	case "disabled":
+		session.And("id NOT IN (SELECT user_id FROM device_policy WHERE enabled = ?)", true)
+	default:
+		return nil, 0, errors.New("设备绑定筛选错误")
 	}
 	var users []User
 	// Groups 是JSON字段，在Go中精确筛选，避免模糊匹配到相似组名。
